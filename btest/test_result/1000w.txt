@@ -1,0 +1,4 @@
+fillrandom 900w: key=100w~1000w-1, value=value@key@1 cahce=8mb, no wal, release
+        fillrandom  scan    getall  size
+rocksdb:    11s     1.12s   17s     84mb
+minilsm:    13s     1.07s   21s     238mb
