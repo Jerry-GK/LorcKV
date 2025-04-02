@@ -11,8 +11,47 @@ using namespace std;
 using namespace rocksdb;
 using namespace chrono;
 
-const int start_key = 1000000; // 起始键
-const int end_key = 9999999;   // 结束键
+#define KEY_LEN 24
+#define VALUE_LEN 2000
+
+const int start_key = 100000; // 起始键
+const int end_key = 999999;   // 结束键
+
+std::string generateRandomString(int len) {
+    std::mt19937 gen(std::random_device{}());
+    std::uniform_int_distribution<> dist(0, 9);
+    std::string result(len, '0');
+
+    for (int i = 0; i < len; ++i) {
+        result[i] = '0' + dist(gen);
+    }
+    
+    // int rand = std::rand();
+    // std::string result = to_string(rand);
+    // result += std::string(len - result.length(), '0');
+
+    return result;
+}
+
+// function gen key
+std::string gen_key(int key) {
+    std::string key_str = std::to_string(key);
+    int prefix_len = KEY_LEN - key_str.length();
+    assert(prefix_len >= 0);
+    key_str.insert(0, prefix_len, '0');
+    return key_str;
+}
+
+// function gen value
+std::string gen_value(int key) {
+    std::string key_str = gen_key(key);
+    int prefix_len = VALUE_LEN - key_str.length();
+    assert(prefix_len >= 0);
+    // gen a rand string of length prefix_len
+    std::string value_str = generateRandomString(prefix_len) + key_str;
+    return value_str;
+}
+
 
 int main() {
     // 设置数据库路径
@@ -23,7 +62,7 @@ int main() {
     options.create_if_missing = true;
 
     // 128MB
-    auto cache = NewLRUCache(256 * 1024 * 1024); // 128MB的LRU缓存
+    auto cache = NewLRUCache(8 * 1024 * 1024); // 8MB的LRU缓存
     BlockBasedTableOptions table_options;
     table_options.block_cache = cache;
     auto table_factory = NewBlockBasedTableFactory(table_options);
@@ -43,8 +82,9 @@ int main() {
 
     // 生成所有键值对并存储在vector中
     for (int i = start_key; i <= end_key; ++i) {
-        std::string key = std::to_string(i);
-        std::string value = "value" + key + "@1";
+        std::string key = gen_key(i);
+        // value = 10 * 
+        std::string value = gen_value(i);
         keyValuePairs.emplace_back(key, value);
     }
 
