@@ -1,0 +1,6 @@
+fillrandom 2gb: key(100w, len=24), value(len=2000), cahce=8mb, sst=64mb, block=4kb, no wal, release, linux
+
+        fillrandom  scan    getallrandom  size
+rocksdb:    16.28s   3.41s   27.15s      1.8gb
+terarkdb:   9.47s    4.08s   21.20s      1.8gb
+minilsm:    35.1s    3.58s   12.34s(8shot)      1.8gb   

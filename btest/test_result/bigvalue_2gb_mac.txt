@@ -1,4 +1,5 @@
-fillrandom 1gb: key(100w, len=50), value(len=1000), cahce=8mb, sst=64mb, block=4kb, no wal, release
+fillrandom 2gb: key(100w, len=24), value(len=2000), cahce=8mb, sst=64mb, block=4kb, no wal, release, mac
+
         fillrandom  scan    getallrandom  size
 rocksdb:    4.78s   2.38s   23.36s      1.84gb
 minilsm:    19.5s   1.59s(0.42hot)   34s(2.65hot)       1.86gb

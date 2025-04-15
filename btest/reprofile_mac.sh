@@ -1,5 +1,5 @@
 filename=$1
-mode=${2:-"debug"}
+mode=${2:-"release"}
 postfix=${3:-""}
 
 profile_time=300
