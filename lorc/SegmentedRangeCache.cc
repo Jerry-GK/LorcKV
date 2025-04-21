@@ -1,5 +1,7 @@
 #include "SegmentedRangeCache.h"
 #include <algorithm>
+#include <iostream>
+#include <cassert>
 
 SegmentedRangeCache::SegmentedRangeCache() {
     ranges = std::vector<Range>();
@@ -36,33 +38,44 @@ void SegmentedRangeCache::putRange(const Range& newRange) {
 
     // 添加旧Range中非重叠部分的数据
     for (const auto& oldRange : overlappingRanges) {
-        // 处理旧Range左侧非重叠部分（startKey < mergedStart）
-        if (oldRange.startKey() < mergedStart) {
+        // 处理旧Range左侧非重叠部分（startKey < newRange.startKey()
+        if (oldRange.startKey() < newRange.startKey()) {
+            std::vector<std::string> oldLeftKeys;
+            std::vector<std::string> oldLeftValues;
             size_t splitIdx = 0;
-            while (splitIdx < oldRange.getSize() && 
-                   oldRange.keyAt(splitIdx) < mergedStart) {
-                mergedKeys.push_back(oldRange.keyAt(splitIdx));
-                mergedValues.push_back(oldRange.valueAt(splitIdx));
+            while (splitIdx < oldRange.getSize() && oldRange.keyAt(splitIdx) < newRange.startKey()) {
+                oldLeftKeys.push_back(oldRange.keyAt(splitIdx));
+                oldLeftValues.push_back(oldRange.valueAt(splitIdx));
                 splitIdx++;
             }
+            // push front
+            mergedKeys.insert(mergedKeys.begin(), oldLeftKeys.begin(), oldLeftKeys.end());
+            mergedValues.insert(mergedValues.begin(), oldLeftValues.begin(), oldLeftValues.end());
         }
 
-        // 处理旧Range右侧非重叠部分（endKey > mergedEnd）
-        if (oldRange.endKey() > mergedEnd) {
+        // 处理旧Range右侧非重叠部分（endKey > newRange.endKey())
+        if (oldRange.endKey() > newRange.endKey()) {
+            std::vector<std::string> oldRightKeys;
+            std::vector<std::string> oldRightValues;
             size_t splitIdx = oldRange.getSize() - 1;
-            while (splitIdx >= 0 && 
-                   oldRange.keyAt(splitIdx) > mergedEnd) {
-                mergedKeys.push_back(oldRange.keyAt(splitIdx));
-                mergedValues.push_back(oldRange.valueAt(splitIdx));
+            while (splitIdx >= 0 && oldRange.keyAt(splitIdx) > newRange.endKey()) {
+                oldRightKeys.push_back(oldRange.keyAt(splitIdx));
+                oldRightValues.push_back(oldRange.valueAt(splitIdx));
                 splitIdx--;
             }
+            // reverse the order of oldRightKeys and oldRightValues
+            std::reverse(oldRightKeys.begin(), oldRightKeys.end());
+            std::reverse(oldRightValues.begin(), oldRightValues.end());
+            // push back
+            mergedKeys.insert(mergedKeys.end(), oldRightKeys.begin(), oldRightKeys.end());
+            mergedValues.insert(mergedValues.end(), oldRightValues.begin(), oldRightValues.end());
         }
     }
 
     // 按键排序合并后的数据
-    std::sort(mergedKeys.begin(), mergedKeys.end());
-    auto last = std::unique(mergedKeys.begin(), mergedKeys.end());
-    mergedKeys.erase(last, mergedKeys.end());
+    // std::sort(mergedKeys.begin(), mergedKeys.end());
+    // auto last = std::unique(mergedKeys.begin(), mergedKeys.end());
+    // mergedKeys.erase(last, mergedKeys.end());
 
     // 创建合并后的新Range并插入缓存
     Range mergedRange(mergedKeys, mergedValues, mergedKeys.size());
@@ -73,12 +86,25 @@ void SegmentedRangeCache::putRange(const Range& newRange) {
         [](const Range& a, const Range& b) {
             return a.startKey() < b.startKey();
         });
+
+    // print all ranges's startKey and endKey in order
+    std::cout << "----------------------------------------" << std::endl;
+    std::cout << "All ranges after putRange: " << newRange.toString() << std::endl;
+    // std::cout << "Merged range: " << mergedRange.toString() << std::endl;
+    size_t totalRangeSize = 0;
+    for (int i = 0; i < ranges.size(); i++) {
+        const Range& range = ranges[i];
+        totalRangeSize += range.getSize();
+        std::cout << "Range[" << i+1 << "]: " + range.toString() << std::endl;
+    }
+    std::cout << "Total range size: " << totalRangeSize << std::endl;
+    std::cout << "----------------------------------------" << std::endl;
 }
 
 Range SegmentedRangeCache::getRange(const std::string& start_key, const std::string& end_key) {
     // find the first range that overlaps with the new range
-    for (int i = ranges.size() - 1; i >=0; i--) {
-        if (ranges[i].startKey() >= start_key && ranges[i].endKey() <= end_key) {
+    for (size_t i = 0; i < ranges.size(); i--) {
+        if (ranges[i].startKey() <= start_key && ranges[i].endKey() >= end_key) {
             hit_count++;
             query_count++;
             return ranges[i];

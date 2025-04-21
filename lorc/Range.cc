@@ -71,3 +71,8 @@ Range Range::subRange(size_t start_index, size_t end_index) const {
     }
     return Range(sub_keys, sub_values, end_index - start_index + 1);
 }
+
+std::string Range::toString() const {
+    std::string str = "< " + this->startKey() + " -> " + this->endKey() + " >";
+    return str;
+}

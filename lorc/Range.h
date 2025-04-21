@@ -23,6 +23,8 @@ public:
 
     Range subRange(size_t start_index, size_t end_index) const;
 
+    std::string toString() const;
+
 private:
     std::vector<std::string> keys;
     std::vector<std::string> values;
