@@ -1,7 +1,8 @@
 #include "LogicallyOrderedRangeCache.h"
 #include "SegmentedRangeCache.h"
-
 #include "Range.h"
+#include "Logger.h"
+
 #include <iostream>
 #include <unordered_map>
 #include <iomanip>
@@ -12,6 +13,8 @@ const int end_key = 9999;
 const double cache_size_ratio = 0.5;
 
 int main() {
+    Logger::setEnabled(true);
+    Logger::setLevel(Logger::DEBUG); 
     int cache_size = (end_key - start_key + 1) * cache_size_ratio;
     LogicallyOrderedRangeCache* lorc = new SegmentedRangeCache(cache_size);
 
@@ -39,9 +42,82 @@ int main() {
         int start = rand() % (end_key - start_key - range_len) + start_key;
         int end = start + range_len - 1;
 
-        Range result = lorc->getRange(std::to_string(start), std::to_string(end));
-        if (!result.isValid()) {
-            // cache miss
+        CacheResult result = lorc->getRange(std::to_string(start), std::to_string(end));
+        if (result.isFullHit()) {
+            // full hit
+            if (do_validation) {
+                // cache hit
+                Range full_hit_range = result.getFullHitRange();
+                std::vector<std::string> keys = full_hit_range.getKeys();
+                std::vector<std::string> values = full_hit_range.getValues();
+    
+                for (int j = 0; j < keys.size(); j++) {
+                    std::string key = keys[j];
+                    std::string value = values[j];
+                    if (standard_cache.find(key) == standard_cache.end()) {
+                        Logger::error("Key not found in standard cache: " + key);
+                        validationSuccess = false;
+                        break;
+                    } else if (standard_cache[key] != value) {
+                        Logger::error("Value mismatch for key " + key + ": expected " + standard_cache[key] + ", got " + value);
+                        validationSuccess = false;
+                        break;
+                    }
+                }
+                if (!validationSuccess) {
+                    break;
+                }
+            }
+        } else if (result.isPartialHit()) {
+            // partial hit
+            std::vector<Range> partial_hit_ranges = result.getPartialHitRanges();
+            if (do_validation) {
+                for (size_t j = 0; j < partial_hit_ranges.size(); j++) {
+                    Range partial_hit_range = partial_hit_ranges[j];
+                    std::vector<std::string> keys = partial_hit_range.getKeys();
+                    std::vector<std::string> values = partial_hit_range.getValues();
+
+                    for (int k = 0; k < keys.size(); k++) {
+                        std::string key = keys[k];
+                        std::string value = values[k];
+                        if (standard_cache.find(key) == standard_cache.end()) {
+                            Logger::error("Key not found in standard cache: " + key);
+                            validationSuccess = false;
+                            break;
+                        } else if (standard_cache[key] != value) {
+                            Logger::error("Value mismatch for key " + key + ": expected " + standard_cache[key] + ", got " + value);
+                            validationSuccess = false;
+                            break;
+                        }
+                    }
+                    if (!validationSuccess) {
+                        break;
+                    }                
+                }
+                // get the remaining data from standard_cache and putRange
+                std::vector<std::string> keys;
+                std::vector<std::string> values;
+                int cur = start, curPartialRangeIndex = 0;
+                while (cur <= end) {
+                    std::string curKey = std::to_string(cur);
+                    if (curKey >= partial_hit_ranges[curPartialRangeIndex].startKey() && curKey <= partial_hit_ranges[curPartialRangeIndex].endKey()) {
+                        // this key is in the partial hit range
+                        keys.push_back(curKey);
+                        values.push_back(partial_hit_ranges[curPartialRangeIndex].valueAt(cur - std::stoi(partial_hit_ranges[curPartialRangeIndex].startKey())));
+                    } else {
+                        // this key is not in the partial hit range
+                        keys.push_back(curKey);
+                        values.push_back(standard_cache[curKey]);   // query from standard cache
+                        if (curPartialRangeIndex < partial_hit_ranges.size() - 1) {
+                            curPartialRangeIndex++;
+                        }
+                    }
+                    cur++;
+                }
+                lorc->putRange(Range(keys, values, end - start + 1));
+            }
+        } else {
+            // no hit
             std::vector<std::string> keys;
             std::vector<std::string> values;
             for (int j = start; j <= end; j++) {
@@ -54,36 +130,17 @@ int main() {
                 values.push_back(standard_cache[key]);
             }
             lorc->putRange(Range(keys, values, end - start + 1)); 
-        } else if (do_validation) {
-            // cache hit
-            std::vector<std::string> keys = result.getKeys();
-            std::vector<std::string> values = result.getValues();
-
-            for (int j = 0; j < keys.size(); j++) {
-                std::string key = keys[j];
-                std::string value = values[j];
-                if (standard_cache.find(key) == standard_cache.end()) {
-                    std::cout << "Key not found in standard cache: " << key << std::endl;
-                    validationSuccess = false;
-                    break;
-                } else if (standard_cache[key] != value) {
-                    std::cout << "Value mismatch for key " << key << ": expected " << standard_cache[key] << ", got " << value << std::endl;
-                    validationSuccess = false;
-                    break;
-                }
-            }
-            if (!validationSuccess) {
-                break;
-            }
         }
-        std::cout << "Current hit rate: " << std::fixed << std::setprecision(3) << lorc->hitRate() * 100 << "%" << std::endl;
-        hitrates.push_back(lorc->hitRate());
+
+        Logger::info("Current full hit rate: " + std::to_string(lorc->fullHitRate() * 100) + "%");
+        Logger::info("Current hit size rate: " + std::to_string(lorc->hitSizeRate() * 100) + "%");
+        hitrates.push_back(lorc->fullHitRate());
     }
 
     if (validationSuccess) {
-        std::cout << "Validation successful!" << std::endl;
+        Logger::info("Validation successful!");
     } else {
-        std::cout << "Validation failed!" << std::endl;
+        Logger::error("Validation failed!");
     }
 
     // Print the hit rate precent, 3 digits after the decimal point
@@ -106,7 +163,7 @@ int main() {
         }
         hitrate_file.close();
     } else {
-        std::cout << "Unable to open file" << std::endl;
+        Logger::error("Unable to open file");
     }
 
     delete lorc;

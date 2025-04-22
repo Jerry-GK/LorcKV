@@ -1,6 +1,8 @@
 #include "Range.h"
+#include "Logger.h"
 #include <iostream>
 #include <cassert>
+#include <algorithm>    // Ìí¼Ó´ËÐÐ
 
 Range::Range(bool valid) {
     this->valid = valid;
@@ -23,7 +25,7 @@ Range::~Range() {
 std::string Range::startKey() const {
     assert(valid && size > 0 && keys.size() > 0);
     if (keys.size() == 0) {
-        std::cout << "keys is empty" << std::endl;
+        Logger::warn("keys is empty");
     }
     return keys[0];
 }
@@ -70,6 +72,18 @@ Range Range::subRange(size_t start_index, size_t end_index) const {
         sub_values.push_back(values[i]);
     }
     return Range(sub_keys, sub_values, end_index - start_index + 1);
+}
+
+Range Range::subRange(std::string start_key, std::string end_key) const {
+    // use binary search to find the start and end index
+    assert(valid && size > 0 && keys.size() > 0);
+    auto start_it = std::lower_bound(keys.begin(), keys.end(), start_key);
+    auto end_it = std::upper_bound(keys.begin(), keys.end(), end_key);
+
+    size_t start_index = std::distance(keys.begin(), start_it);
+    size_t end_index = std::distance(keys.begin(), end_it) - 1;
+
+    return this->subRange(start_index, end_index);
 }
 
 std::string Range::toString() const {

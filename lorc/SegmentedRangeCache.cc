@@ -93,35 +93,55 @@ void SegmentedRangeCache::putRange(const Range& newRange) {
 
     this->current_size += mergedRange.getSize();
 
-    // print all ranges's startKey and endKey in order
-    std::cout << "----------------------------------------" << std::endl;
-    std::cout << "All ranges after putRange: " << newRange.toString() << std::endl;
-    // std::cout << "Merged range: " << mergedRange.toString() << std::endl;
-    for (int i = 0; i < entries.size(); i++) {
-        const Range& range = entries[i].getRange();
-        std::cout << "Range[" << i+1 << "]: " + range.toString() << std::endl;
-    }
-    std::cout << "Total range size: " << this->current_size << std::endl;
-    std::cout << "----------------------------------------" << std::endl;
-
     // victim
     while (this->current_size > this->max_size) {
         this->victim();
     }
+
+    // print all ranges's startKey and endKey in order
+    Logger::debug("----------------------------------------");
+    Logger::debug("All ranges after putRange and victim: " + newRange.toString());
+    for (int i = 0; i < this->entries.size(); i++) {
+        const Range& range = this->entries[i].getRange();
+        Logger::debug("Range[" + std::to_string(i+1) + "]: " + range.toString());
+    }
+    Logger::debug("Total range size: " + std::to_string(this->current_size));
+    Logger::debug("----------------------------------------");
 }
 
-Range SegmentedRangeCache::getRange(const std::string& start_key, const std::string& end_key) {
-    // find the first range that overlaps with the new range
+CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const std::string& end_key) {
+    Logger::debug("Get Range: < " + start_key + " -> " + end_key + " >");
+    CacheResult result(false, false, Range(false), {});
+    std::vector<Range> partial_hit_ranges;
     for (size_t i = 0; i < this->entries.size(); i++) {
         if (entries[i].getRange().startKey() <= start_key && entries[i].getRange().endKey() >= end_key) {
-            hit_count++;
-            query_count++;
+            // full hit
+            full_hit_count++;
+            hit_size += std::stoi(end_key) - std::stoi(start_key) + 1;
             this->pinRange(i);
-            return entries[i].getRange();
+            result = CacheResult(true, false, entries[i].getRange(), {});
+            break;
+        } else if (entries[i].getRange().startKey() <= end_key && entries[i].getRange().endKey() >= start_key) {
+            // partial hit
+            partial_hit_ranges.push_back(entries[i].getRange().subRange(
+                std::max(entries[i].getRange().startKey(), start_key),
+                std::min(entries[i].getRange().endKey(), end_key)));
+            this->pinRange(i); 
         }
     }
-    query_count++;
-    return Range(false);
+
+    full_query_count++;
+    query_size += std::stoi(end_key) - std::stoi(start_key) + 1;
+
+    if (!result.isFullHit() && !partial_hit_ranges.empty()) {
+        // partial hit
+        for (const auto& range : partial_hit_ranges) {
+            hit_size += range.getSize();
+        }
+        result = CacheResult(false, true, Range(false), partial_hit_ranges);
+    } 
+
+    return result;
 }
 
 // void SegmentedRangeCache::victim() {
@@ -130,9 +150,17 @@ Range SegmentedRangeCache::getRange(const std::string& start_key, const std::str
 //         return;
 //     }
 //     int randomIndex = rand() % entries.size();
-//     std::cout << "Victim: " << entries[randomIndex].getRange().toString() << std::endl;
-//     this->current_size -= entries[randomIndex].getRange().getSize();
-//     entries.erase(entries.begin() + randomIndex);
+//     if (entries.size() == 1) {
+//         Logger::debug("Truncate: " + entries[0].getRange().toString());
+//         Range truncatedRange = entries[0].getRange().subRange(0, this->max_size - 1);
+//         entries.erase(entries.begin());
+//         entries.push_back(SegmentedRangeCacheEntry(truncatedRange, this->cache_timestamp++));
+//         this->current_size = truncatedRange.getSize();
+//     } else {
+//         Logger::debug("Victim: " + entries[randomIndex].getRange().toString());
+//         this->current_size -= entries[randomIndex].getRange().getSize();
+//         entries.erase(entries.begin() + randomIndex);
+//     }
 // }
 
 // void SegmentedRangeCache::victim() {
@@ -144,12 +172,21 @@ Range SegmentedRangeCache::getRange(const std::string& start_key, const std::str
 //         [](const SegmentedRangeCacheEntry& a, const SegmentedRangeCacheEntry& b) {
 //             return a.getTimestamp() < b.getTimestamp();
 //         });
-//     if (minRangeIt != entries.end()) {
-//         std::cout << "Victim: " << minRangeIt->getRange().toString() << std::endl;
-//         this->current_size -= minRangeIt->getRange().getSize();
-//         entries.erase(minRangeIt);
+//         if (minRangeIt != entries.end()) {
+//             // only truncate if there is only one range left (seldom triggered)
+//             if (entries.size() == 1) {
+//                 Logger::debug("Truncate: " + minRangeIt->getRange().toString());
+//                 Range truncatedRange = minRangeIt->getRange().subRange(0, this->max_size - 1);
+//                 entries.erase(minRangeIt);
+//                 entries.push_back(SegmentedRangeCacheEntry(truncatedRange, this->cache_timestamp++));
+//                 this->current_size = truncatedRange.getSize();
+//             } else {
+//                 Logger::debug("Victim: " + minRangeIt->getRange().toString());
+//                 this->current_size -= minRangeIt->getRange().getSize();
+//                 entries.erase(minRangeIt);
+//             }
 //     } else {
-//         std::cout << "No range to victim" << std::endl;
+//         Logger::debug("No range to victim");
 //     }
 // }
 
@@ -163,11 +200,20 @@ void SegmentedRangeCache::victim() {
             return a.getRange().getSize() < b.getRange().getSize();
         });
     if (minRangeIt != entries.end()) {
-        std::cout << "Victim: " << minRangeIt->getRange().toString() << std::endl;
-        this->current_size -= minRangeIt->getRange().getSize();
-        entries.erase(minRangeIt);
+        // only truncate if there is only one range left (seldom triggered)
+        if (entries.size() == 1) {
+            Logger::debug("Truncate: " + minRangeIt->getRange().toString());
+            Range truncatedRange = minRangeIt->getRange().subRange(0, this->max_size - 1);
+            entries.erase(minRangeIt);
+            entries.push_back(SegmentedRangeCacheEntry(truncatedRange, this->cache_timestamp++));
+            this->current_size = truncatedRange.getSize();
+        } else {
+            Logger::debug("Victim: " + minRangeIt->getRange().toString());
+            this->current_size -= minRangeIt->getRange().getSize();
+            entries.erase(minRangeIt);
+        }
     } else {
-        std::cout << "No range to victim" << std::endl;
+        Logger::debug("No range to victim");
     }
 }
 
@@ -181,11 +227,20 @@ void SegmentedRangeCache::victim() {
 //             return a.getRange().getSize() > b.getRange().getSize();
 //         });
 //     if (minRangeIt != entries.end()) {
-//         std::cout << "Victim: " << minRangeIt->getRange().toString() << std::endl;
-//         this->current_size -= minRangeIt->getRange().getSize();
-//         entries.erase(minRangeIt);
+//         // only truncate if there is only one range left (seldom triggered)
+//         if (entries.size() == 1) {
+//             Logger::debug("Truncate: " + minRangeIt->getRange().toString());
+//             Range truncatedRange = minRangeIt->getRange().subRange(0, this->max_size - 1);
+//             entries.erase(minRangeIt);
+//             entries.push_back(SegmentedRangeCacheEntry(truncatedRange, this->cache_timestamp++));
+//             this->current_size = truncatedRange.getSize();
+//         } else {
+//             Logger::debug("Victim: " + minRangeIt->getRange().toString());
+//             this->current_size -= minRangeIt->getRange().getSize();
+//             entries.erase(minRangeIt);
+//         }
 //     } else {
-//         std::cout << "No range to victim" << std::endl;
+//         Logger::debug("No range to victim");
 //     }
 // }
 
@@ -194,9 +249,16 @@ void SegmentedRangeCache::pinRange(int index) {
     entries[index].timestamp = this->cache_timestamp++;
 }
 
-double SegmentedRangeCache::hitRate() const {
-    if (query_count == 0) {
+double SegmentedRangeCache::fullHitRate() const {
+    if (full_query_count == 0) {
         return 0;
     }
-    return (double)hit_count / query_count;
+    return (double)full_hit_count / full_query_count;
+}
+
+double SegmentedRangeCache::hitSizeRate() const {
+    if (query_size == 0) {
+        return 0;
+    }
+    return (double)hit_size / query_size;
 }

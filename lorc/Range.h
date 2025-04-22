@@ -22,6 +22,7 @@ public:
     bool isValid() const;
 
     Range subRange(size_t start_index, size_t end_index) const;
+    Range subRange(std::string start_key, std::string end_key) const;
 
     std::string toString() const;
 

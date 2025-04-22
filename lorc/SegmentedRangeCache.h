@@ -2,8 +2,8 @@
 
 #include <vector>
 #include "LogicallyOrderedRangeCache.h"
+#include "Logger.h"
 
-// Ç°ÏòÉùÃ÷
 class SegmentedRangeCacheEntry;
 
 class SegmentedRangeCache : public LogicallyOrderedRangeCache {
@@ -12,10 +12,11 @@ public:
     ~SegmentedRangeCache() override;
 
     void putRange(const Range& range) override;
-    Range getRange(const std::string& start_key, const std::string& end_key) override;
+    CacheResult getRange(const std::string& start_key, const std::string& end_key) override;
     void victim() override;
     void pinRange(int index) override;
-    double hitRate() const override;
+    double fullHitRate() const override;
+    double hitSizeRate() const override;
 
 private:
     std::vector<SegmentedRangeCacheEntry> entries;
