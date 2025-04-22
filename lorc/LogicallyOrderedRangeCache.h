@@ -7,7 +7,7 @@
 // This is a cache for ranges. Key-Value Ranges is the smallest unit of data that can be cached.
 class LogicallyOrderedRangeCache {
 public:
-    LogicallyOrderedRangeCache();
+    LogicallyOrderedRangeCache(int max_size);
     virtual ~LogicallyOrderedRangeCache();
 
     // insert a key-value range into the cache, update overlapped exsisting ranges
@@ -16,10 +16,18 @@ public:
     // lookup a key-value range in the cache
     virtual Range getRange(const std::string& start_key, const std::string& end_key) = 0;
 
+    // victim
+    virtual void victim() = 0;
+
+    // pin a range in the cache to implement LRU
+    virtual void pinRange(int index) = 0;
+
     virtual double hitRate() const = 0;
 
 
 protected:
+    int max_size;
+    int current_size;
     int hit_count;
     int query_count;
 };

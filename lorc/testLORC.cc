@@ -5,20 +5,27 @@
 #include <iostream>
 #include <unordered_map>
 #include <iomanip>
+#include <fstream>
 
 const int start_key =  1000;
 const int end_key = 9999;
+const double cache_size_ratio = 0.5;
 
 int main() {
-    LogicallyOrderedRangeCache* lorc = new SegmentedRangeCache();
+    int cache_size = (end_key - start_key + 1) * cache_size_ratio;
+    LogicallyOrderedRangeCache* lorc = new SegmentedRangeCache(cache_size);
 
-    const int min_range_len = 100;
-    const int max_range_len = 300;
-    const int num_queries = 1000;
+    const int min_range_len = 200;
+    const int max_range_len = 200;
+    const int num_queries = 50000;
+
     const double update_ratio = 0.2;
     const bool do_validation = true;
 
     std::unordered_map<std::string, std::string> standard_cache;
+    
+    std::vector<double> hitrates;
+    hitrates.reserve(num_queries);
 
     // init standard_cache
     for (int i = start_key; i <=end_key; i++) {
@@ -69,6 +76,8 @@ int main() {
                 break;
             }
         }
+        std::cout << "Current hit rate: " << std::fixed << std::setprecision(3) << lorc->hitRate() * 100 << "%" << std::endl;
+        hitrates.push_back(lorc->hitRate());
     }
 
     if (validationSuccess) {
@@ -78,5 +87,29 @@ int main() {
     }
 
     // Print the hit rate precent, 3 digits after the decimal point
-    std::cout << "Hit rate: " << std::fixed << std::setprecision(3) << lorc->hitRate() * 100 << "%" << std::endl;
+    // std::cout << "Hit rate: " << std::fixed << std::setprecision(3) << lorc->hitRate() * 100 << "%" << std::endl;   
+
+    // // caclate estimated coverage
+    // double selectivity = ((min_range_len + max_range_len) / (double)(end_key - start_key + 1)) / 2;
+    // double cover = 1.0;
+    // for (int i = 0; i < num_queries; i++) {
+    //     cover = cover * (1 - selectivity);
+    // }
+    // cover = 1 - cover;
+    // std::cout << "Estimated coverage: " << std::fixed << std::setprecision(3) << cover * 100 << "%" << std::endl;
+
+    // output hitrates to hitrates.csv
+    std::ofstream hitrate_file("output/hitrates.csv");
+    if (hitrate_file.is_open()) {
+        for (size_t i = 0; i < hitrates.size(); i++) {
+            hitrate_file << i + 1 << ", " << hitrates[i] << std::endl;
+        }
+        hitrate_file.close();
+    } else {
+        std::cout << "Unable to open file" << std::endl;
+    }
+
+    delete lorc;
+
+    return 0;
 }
