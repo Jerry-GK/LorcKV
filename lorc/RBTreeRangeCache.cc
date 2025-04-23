@@ -17,10 +17,9 @@ RBTreeRangeCache::~RBTreeRangeCache() {
 
 void RBTreeRangeCache::putRange(const Range& newRange) {
     // 合并数据：新Range数据优先，旧Range数据保留非重叠部分
-    std::vector<std::string> mergedKeys = newRange.getKeys();
-    std::vector<std::string> mergedValues = newRange.getValues();
     std::vector<Range> leftRanges; // at most one
     std::vector<Range> rightRanges; // at most one
+    std::string newRangeStr = newRange.toString();
 
     // it points to the first range that may overlap with newRange
     auto it = by_start.upper_bound(newRange);
@@ -38,7 +37,7 @@ void RBTreeRangeCache::putRange(const Range& newRange) {
         if (it->startKey() < newRange.startKey() && it->endKey() >= newRange.startKey()) {
             int leftSplitIdx = it->find(newRange.startKey()) - 1;
             if (leftSplitIdx >= 0 && leftSplitIdx < it->getSize()) {
-                leftRanges.push_back(it->subRange(0, leftSplitIdx));
+                leftRanges.push_back(std::move(it->subRangeMoved(0, leftSplitIdx)));
             }
         }
 
@@ -49,7 +48,7 @@ void RBTreeRangeCache::putRange(const Range& newRange) {
                 rightSplitIdx++;
             }
             if (rightSplitIdx >= 0 && rightSplitIdx < it->getSize()) {
-                rightRanges.push_back(it->subRange(rightSplitIdx, it->getSize() - 1));
+                rightRanges.push_back(std::move(it->subRangeMoved(rightSplitIdx, it->getSize() - 1)));
             }
         }
 
@@ -62,7 +61,6 @@ void RBTreeRangeCache::putRange(const Range& newRange) {
             }
         }
         this->current_size -= it->getSize();
-        Logger::debug("Remove Range: " + it->toString());
         it = by_start.erase(it);
     }
     
@@ -77,16 +75,17 @@ void RBTreeRangeCache::putRange(const Range& newRange) {
     for (auto& range : leftRanges) {
         mergedRanges.push_back(std::move(range));
     }
-    mergedRanges.push_back(newRange);
+    mergedRanges.push_back(std::move(newRange));
     for (auto& range : rightRanges) {
         mergedRanges.push_back(std::move(range));
     }
-    Range mergedRange = Range::concatRanges(mergedRanges);
+    // Range mergedRange = Range::concatRanges(mergedRanges);
+    Range mergedRange = Range::concatRangesMoved(mergedRanges);
     
     // add the new merged range
-    by_start.insert(mergedRange);
     by_length.emplace(mergedRange.getSize(), mergedRange.startKey());
     this->current_size += mergedRange.getSize();
+    by_start.insert(std::move(mergedRange));
 
     // 触发淘汰
     while (this->current_size > this->max_size) {
@@ -95,7 +94,7 @@ void RBTreeRangeCache::putRange(const Range& newRange) {
 
     // print all ranges's startKey and endKey in order
     Logger::debug("----------------------------------------");
-    Logger::debug("All ranges after putRange and victim: " + newRange.toString());
+    Logger::debug("All ranges after putRange and victim: " + newRangeStr);
     for (auto it = by_start.begin(); it != by_start.end(); ++it) {
         Logger::debug("Range: " + it->toString());
     }
@@ -119,9 +118,9 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
             // full hit
             full_hit_count++;
             this->pinRange(it->startKey());
-            Range fullHitRange = it->subRange(start_key, end_key);
+            Range fullHitRange = it->subRange(start_key, end_key); // dont use subRangeMoved to preserve underlying data
             hit_size += fullHitRange.getSize();
-            result = CacheResult(true, false, fullHitRange, {});
+            result = CacheResult(true, false, std::move(fullHitRange), {});
         } else {
             if (it->endKey() < start_key) {
                 ++it; // at most check the next one
@@ -129,9 +128,10 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
             if (it!= by_start.end() && it->startKey() <= end_key && it->endKey() >= start_key) {
                 // partial hit
                 do {
-                    partial_hit_ranges.push_back(it->subRange(
+                    // dont use subRangeMoved to preserve underlying data
+                    partial_hit_ranges.push_back(std::move(it->subRange(
                         std::max(it->startKey(), start_key),
-                        std::min(it->endKey(), end_key)));
+                        std::min(it->endKey(), end_key))));
                     this->pinRange(it->startKey());
                 } while(++it != by_start.end() && it->startKey() <= end_key && it->endKey() >= start_key);
             } else {
@@ -149,7 +149,8 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
         for (const auto& range : partial_hit_ranges) {
             hit_size += range.getSize();
         }
-        result = CacheResult(false, true, Range(false), partial_hit_ranges);
+        // 使用std::move移动整个vector
+        result = CacheResult(false, true, Range(false), std::move(partial_hit_ranges));
     } 
 
     return result;
@@ -175,12 +176,10 @@ void RBTreeRangeCache::victim() {
     } else {
         // truncate the range
         Logger::debug("Truncate: " + it->toString());
-        Range truncatedRange = it->subRange(0, this->max_size - 1);
-        by_start.erase(it);
         by_length.erase(by_length.find(it->getSize()));
-        by_start.insert(truncatedRange);
-        by_length.emplace(truncatedRange.getSize(), truncatedRange.startKey());
-        this->current_size = truncatedRange.getSize();
+        it->truncate(this->max_size);
+        by_length.emplace(it->getSize(), it->startKey());
+        this->current_size = it->getSize();
     }
 }
 

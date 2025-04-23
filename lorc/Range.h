@@ -2,13 +2,33 @@
 
 #include <string>
 #include <vector>
+#include <memory>
 
 class Range {
+private:
+    struct RangeData {
+        std::vector<std::string> keys;
+        std::vector<std::string> values;
+    };
+    std::shared_ptr<RangeData> data;
+    size_t start_pos;  // subrange start
+    mutable size_t size;
+    mutable bool valid;
+    mutable int timestamp;
+
 public:
-    Range(bool valid);
+    Range(bool valid = false);
     // create from vector
     Range(std::vector<std::string> keys, std::vector<std::string> values, size_t size);
+    // deep copy
+    Range(const Range& other);
+    // move copy
+    Range(Range&& other) noexcept;
+    // moved construction
+    Range(std::shared_ptr<RangeData> data, size_t start, size_t size);
     ~Range();      
+    Range& operator=(const Range& other);
+    Range& operator=(Range&& other) noexcept;
 
     std::string startKey() const;
     std::string endKey() const;
@@ -18,13 +38,17 @@ public:
 
     std::vector<std::string> getKeys() const;
     std::vector<std::string> getValues() const;
+
     size_t getSize() const;
     bool isValid() const;
     int getTimestamp() const;
     void setTimestamp(int timestamp) const;
 
     Range subRange(size_t start_index, size_t end_index) const;
+    Range subRangeMoved(size_t start_index, size_t end_index) const;
     Range subRange(std::string start_key, std::string end_key) const;
+
+    void truncate(int length) const;
 
     int find(std::string key) const;
 
@@ -33,15 +57,15 @@ public:
     // concat ranges that is ordered and not overlapping
     static Range concatRanges(std::vector<Range>& ranges);
 
+
+    static Range concatRangesMoved(std::vector<Range>& ranges);
+
     // 定义比较运算符，按startKey从小到大排序
     bool operator<(const Range& other) const {
         return startKey() < other.startKey();
     }
 
-private:
-    std::vector<std::string> keys;
-    std::vector<std::string> values;
-    size_t size;
-    bool valid;
-    mutable int timestamp;
+    // 添加新方法来获取原始数据的引用
+    std::shared_ptr<RangeData> getData() const { return data; }
+    size_t getStartPos() const { return start_pos; }
 };

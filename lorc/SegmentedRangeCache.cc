@@ -205,11 +205,11 @@ void SegmentedRangeCache::victim() {
             this->current_size -= minRangeIt->getRange().getSize();
             entries.erase(minRangeIt);
         } else {
+            // truncate the range
             Logger::debug("Truncate: " + minRangeIt->getRange().toString());
-            Range truncatedRange = minRangeIt->getRange().subRange(0, this->max_size - 1);
-            entries.erase(minRangeIt);
-            entries.push_back(SegmentedRangeCacheEntry(truncatedRange, this->cache_timestamp++));
-            this->current_size = truncatedRange.getSize();
+            minRangeIt->getRange().truncate(this->max_size);
+            this->pinRange(0);
+            this->current_size = minRangeIt->getRange().getSize();
         }
     } else {
         Logger::debug("No range to victim");

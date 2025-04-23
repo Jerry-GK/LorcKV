@@ -18,8 +18,8 @@ int main() {
     Logger::setLevel(Logger::DEBUG); 
     Logger::info("Start testing...");
     int cache_size = (end_key - start_key + 1) * cache_size_ratio;
-    LogicallyOrderedRangeCache* lorc = new SegmentedRangeCache(cache_size);
-    // LogicallyOrderedRangeCache* lorc = new RBTreeRangeCache(cache_size);
+    // LogicallyOrderedRangeCache* lorc = new SegmentedRangeCache(cache_size);
+    LogicallyOrderedRangeCache* lorc = new RBTreeRangeCache(cache_size);
 
     const int min_range_len = 200;
     const int max_range_len = 200;
@@ -75,12 +75,12 @@ int main() {
         } else if (result.isPartialHit()) {
             // partial hit
             std::vector<Range> partial_hit_ranges = result.getPartialHitRanges();
-            if (do_validation) {
-                for (size_t j = 0; j < partial_hit_ranges.size(); j++) {
-                    Range partial_hit_range = partial_hit_ranges[j];
-                    std::vector<std::string> keys = partial_hit_range.getKeys();
-                    std::vector<std::string> values = partial_hit_range.getValues();
+            for (size_t j = 0; j < partial_hit_ranges.size(); j++) {
+                Range partial_hit_range = partial_hit_ranges[j];
+                std::vector<std::string> keys = partial_hit_range.getKeys();
+                std::vector<std::string> values = partial_hit_range.getValues();
 
+                if (do_validation) {
                     for (int k = 0; k < keys.size(); k++) {
                         std::string key = keys[k];
                         std::string value = values[k];
@@ -96,30 +96,30 @@ int main() {
                     }
                     if (!validationSuccess) {
                         break;
-                    }                
-                }
-                // get the remaining data from standard_cache and putRange
-                std::vector<std::string> keys;
-                std::vector<std::string> values;
-                int cur = start, curPartialRangeIndex = 0;
-                while (cur <= end) {
-                    std::string curKey = std::to_string(cur);
-                    if (curKey >= partial_hit_ranges[curPartialRangeIndex].startKey() && curKey <= partial_hit_ranges[curPartialRangeIndex].endKey()) {
-                        // this key is in the partial hit range
-                        keys.push_back(curKey);
-                        values.push_back(partial_hit_ranges[curPartialRangeIndex].valueAt(cur - std::stoi(partial_hit_ranges[curPartialRangeIndex].startKey())));
-                    } else {
-                        // this key is not in the partial hit range
-                        keys.push_back(curKey);
-                        values.push_back(standard_cache[curKey]);   // query from standard cache
-                        if (curPartialRangeIndex < partial_hit_ranges.size() - 1) {
-                            curPartialRangeIndex++;
-                        }
                     }
-                    cur++;
-                }
-                lorc->putRange(Range(keys, values, end - start + 1));
+                }                
             }
+            // get the remaining data from standard_cache and putRange
+            std::vector<std::string> keys;
+            std::vector<std::string> values;
+            int cur = start, curPartialRangeIndex = 0;
+            while (cur <= end) {
+                std::string curKey = std::to_string(cur);
+                if (curKey >= partial_hit_ranges[curPartialRangeIndex].startKey() && curKey <= partial_hit_ranges[curPartialRangeIndex].endKey()) {
+                    // this key is in the partial hit range
+                    keys.push_back(curKey);
+                    values.push_back(partial_hit_ranges[curPartialRangeIndex].valueAt(cur - std::stoi(partial_hit_ranges[curPartialRangeIndex].startKey())));
+                } else {
+                    // this key is not in the partial hit range
+                    keys.push_back(curKey);
+                    values.push_back(standard_cache[curKey]);   // query from standard cache
+                    if (curPartialRangeIndex < partial_hit_ranges.size() - 1) {
+                        curPartialRangeIndex++;
+                    }
+                }
+                cur++;
+            }
+            lorc->putRange(Range(keys, values, end - start + 1));
         } else {
             // no hit
             std::vector<std::string> keys;
