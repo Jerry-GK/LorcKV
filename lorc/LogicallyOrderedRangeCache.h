@@ -38,9 +38,6 @@ public:
     // victim
     virtual void victim() = 0;
 
-    // pin a range in the cache to implement LRU
-    virtual void pinRange(int index) = 0;
-
     virtual double fullHitRate() const = 0;
 
     virtual double hitSizeRate() const = 0;

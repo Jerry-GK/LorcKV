@@ -6,7 +6,7 @@ if [ -z "$mode" ]; then
     echo "Usage: $0 <run|profile>"
     exit 1
 fi
-if [ "$mode" != "run" ] && [ "$mode" != "profile" ]; then
+if [ "$mode" != "run" ] && [ "$mode" != "debug" ] && [ "$mode" != "profile" ]; then
     echo "Invalid mode: $mode"
     exit 1
 fi
@@ -17,6 +17,11 @@ g++ -std=c++17 -g -O2 -fno-omit-frame-pointer -rdynamic *.cc -o ./bin/testLORC
 # run
 if [ "$mode" == "run" ]; then
     ./bin/testLORC
+fi
+
+# debug
+if [ "$mode" == "debug" ]; then
+    gdb ./bin/testLORC
 fi
 
 # profile

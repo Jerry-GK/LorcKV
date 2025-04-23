@@ -1,5 +1,6 @@
 #include "LogicallyOrderedRangeCache.h"
 #include "SegmentedRangeCache.h"
+#include "RBTreeRangeCache.h"
 #include "Range.h"
 #include "Logger.h"
 
@@ -15,8 +16,10 @@ const double cache_size_ratio = 0.5;
 int main() {
     Logger::setEnabled(true);
     Logger::setLevel(Logger::DEBUG); 
+    Logger::info("Start testing...");
     int cache_size = (end_key - start_key + 1) * cache_size_ratio;
     LogicallyOrderedRangeCache* lorc = new SegmentedRangeCache(cache_size);
+    // LogicallyOrderedRangeCache* lorc = new RBTreeRangeCache(cache_size);
 
     const int min_range_len = 200;
     const int max_range_len = 200;
@@ -35,6 +38,7 @@ int main() {
         standard_cache[std::to_string(i)] = "value@" + std::to_string(i) + "@" + std::to_string(rand() % 100);
     }
 
+    Logger::info("Standard cache initialized! Start testing LORC...");
     // randomly generate num_queries queries
     bool validationSuccess = true;
     for (int i = 0; i < num_queries; i++) {

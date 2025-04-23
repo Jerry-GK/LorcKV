@@ -14,9 +14,10 @@ public:
     void putRange(const Range& range) override;
     CacheResult getRange(const std::string& start_key, const std::string& end_key) override;
     void victim() override;
-    void pinRange(int index) override;
     double fullHitRate() const override;
     double hitSizeRate() const override;
+
+    void pinRange(int index);
 
 private:
     std::vector<SegmentedRangeCacheEntry> entries;
