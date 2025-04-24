@@ -1,5 +1,6 @@
 #include "LogicallyOrderedRangeCache.h"
 #include "SegmentedRangeCache.h"
+#include "RowRangeCache.h"
 #include "RBTreeRangeCache.h"
 #include "Range.h"
 #include "Logger.h"
@@ -42,6 +43,7 @@ int main() {
     Logger::info("Start testing...");
     int cache_size = (end_key - start_key + 1) * cache_size_ratio;
     // LogicallyOrderedRangeCache* lorc = new SegmentedRangeCache(cache_size);
+    // LogicallyOrderedRangeCache* lorc = new RowRangeCache(cache_size);
     LogicallyOrderedRangeCache* lorc = new RBTreeRangeCache(cache_size);
 
     std::unordered_map<std::string, std::string> standard_kv;
