@@ -15,6 +15,15 @@ const int end_key = 10 * num_keys_level - 1;
 const int value_size = 4096;
 const double cache_size_ratio = 0.25;
 
+const int min_range_len = 1;
+const int max_range_len = num_keys_level * 10 * 0.01;
+const int num_queries = 500;
+
+const bool enable_logger = true;
+const double update_ratio = 0.2;
+const bool do_validation = true;
+const bool do_update = true;
+
 std::string genValueStr(std::string key) {
     std::string value_postfix = "value@" + key + "@" + std::to_string(rand() % 100);
     int prefix_len = value_size - value_postfix.length();
@@ -28,28 +37,21 @@ std::string genValueStr(std::string key) {
 }
 
 int main() {
-    Logger::setEnabled(false);
+    Logger::setEnabled(enable_logger);
     Logger::setLevel(Logger::DEBUG); 
     Logger::info("Start testing...");
     int cache_size = (end_key - start_key + 1) * cache_size_ratio;
     // LogicallyOrderedRangeCache* lorc = new SegmentedRangeCache(cache_size);
     LogicallyOrderedRangeCache* lorc = new RBTreeRangeCache(cache_size);
 
-    const int min_range_len = 1;
-    const int max_range_len = num_keys_level * 10 * 0.01;
-    const int num_queries = 500;
-
-    const double update_ratio = 0.2;
-    const bool do_validation = false;
-
-    std::unordered_map<std::string, std::string> standard_cache;
+    std::unordered_map<std::string, std::string> standard_kv;
     
     std::vector<double> hitrates;
     hitrates.reserve(num_queries);
 
-    // init standard_cache
+    // init standard_kv
     for (int i = start_key; i <=end_key; i++) {
-        standard_cache[std::to_string(i)] = genValueStr(std::to_string(i));
+        standard_kv[std::to_string(i)] = genValueStr(std::to_string(i));
     }
 
     Logger::info("Standard cache initialized! Start testing LORC...");
@@ -74,12 +76,12 @@ int main() {
                 for (int j = 0; j < keys.size(); j++) {
                     std::string key = keys[j];
                     std::string value = values[j];
-                    if (standard_cache.find(key) == standard_cache.end()) {
+                    if (standard_kv.find(key) == standard_kv.end()) {
                         Logger::error("Key not found in standard cache: " + key);
                         validationSuccess = false;
                         break;
-                    } else if (standard_cache[key] != value) {
-                        Logger::error("Value mismatch for key " + key + ": expected " + standard_cache[key] + ", got " + value);
+                    } else if (standard_kv[key] != value) {
+                        Logger::error("Value mismatch for key " + key + ": expected " + standard_kv[key] + ", got " + value);
                         validationSuccess = false;
                         break;
                     }
@@ -99,12 +101,12 @@ int main() {
                     for (int k = 0; k < keys.size(); k++) {
                         std::string key = keys[k];
                         std::string value = values[k];
-                        if (standard_cache.find(key) == standard_cache.end()) {
+                        if (standard_kv.find(key) == standard_kv.end()) {
                             Logger::error("Key not found in standard cache: " + key);
                             validationSuccess = false;
                             break;
-                        } else if (standard_cache[key] != value) {
-                            Logger::error("Value mismatch for key " + key + ": expected " + standard_cache[key] + ", got " + value);
+                        } else if (standard_kv[key] != value) {
+                            Logger::error("Value mismatch for key " + key + ": expected " + standard_kv[key] + ", got " + value);
                             validationSuccess = false;
                             break;
                         }
@@ -114,7 +116,7 @@ int main() {
                     }
                 }                
             }
-            // get the remaining data from standard_cache and putRange
+            // get the remaining data from standard_kv and putRange
             std::vector<std::string> keys;
             std::vector<std::string> values;
             int cur = start, curPartialRangeIndex = 0;
@@ -127,7 +129,7 @@ int main() {
                 } else {
                     // this key is not in the partial hit range
                     keys.emplace_back(curKey);
-                    values.emplace_back(standard_cache[curKey]);   // query from standard cache
+                    values.emplace_back(standard_kv[curKey]);   // query from standard cache
                     if (curPartialRangeIndex < partial_hit_ranges.size() - 1) {
                         curPartialRangeIndex++;
                     }
@@ -141,12 +143,12 @@ int main() {
             std::vector<std::string> values;
             for (int j = start; j <= end; j++) {
                 std::string key = std::to_string(j);
-                // update_ratio for standard_cache has been updated
-                if (rand() % 100 < update_ratio * 100) {
-                    standard_cache[key] = genValueStr(key);
+                // update_ratio for standard_kv has been updated
+                if (do_update && rand() % 100 < update_ratio * 100) {
+                    standard_kv[key] = genValueStr(key);
                 }
                 keys.emplace_back(key);
-                values.emplace_back(standard_cache[key]);
+                values.emplace_back(standard_kv[key]);
             }
             lorc->putRange(Range(std::move(keys), std::move(values), end - start + 1)); 
         }

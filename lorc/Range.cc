@@ -8,14 +8,19 @@ Range::Range(bool valid) {
     this->valid = valid;
     this->size = 0;
     this->timestamp = 0;
+    this->subrange_view_start_pos = -1;
+}
+
+Range::~Range() {
+    data.reset();
 }
 
 Range::Range(const Range& other) {
-    // assert(false);
+    // assert(false); // (it should not be called in RBTreeRangeCache)
     this->valid = other.valid;
     this->size = other.size;
     this->timestamp = other.timestamp;
-    this->start_pos = other.start_pos;
+    this->subrange_view_start_pos = other.subrange_view_start_pos;
     
     if (other.valid && other.data) {
         this->data = std::make_shared<RangeData>();
@@ -28,12 +33,12 @@ Range::Range(Range&& other) noexcept {
     data = std::move(other.data);
     valid = other.valid;
     size = other.size;
-    start_pos = other.start_pos;
+    subrange_view_start_pos = other.subrange_view_start_pos;
     timestamp = other.timestamp;
     
     other.valid = false;
     other.size = 0;
-    other.start_pos = 0;
+    other.subrange_view_start_pos = -1;
     other.timestamp = 0;
 }
 
@@ -41,7 +46,7 @@ Range::Range(Range&& other) noexcept {
 //     data = std::make_shared<RangeData>();
 //     data->keys = keys;
 //     data->values = values;
-//     this->start_pos = 0;
+//     this->subrange_view_start_pos = -1;
 //     this->valid = true;
 //     this->size = size;
 //     this->timestamp = 0;
@@ -51,22 +56,18 @@ Range::Range(std::vector<std::string>&& keys, std::vector<std::string>&& values,
     data = std::make_shared<RangeData>();
     data->keys = std::move(keys);
     data->values = std::move(values);
-    this->start_pos = 0;
+    this->subrange_view_start_pos = -1;
     this->valid = true;
     this->size = size;
     this->timestamp = 0;
 }
 
-Range::Range(std::shared_ptr<RangeData> data, size_t start, size_t size) {
+Range::Range(std::shared_ptr<RangeData> data, int subrange_view_start_pos, size_t size) {
     this->data = data;
-    this->start_pos = start;
+    this->subrange_view_start_pos = subrange_view_start_pos;
     this->valid = true;
     this->size = size;
     this->timestamp = 0;
-}
-
-Range::~Range() {
-    data.reset();
 }
 
 Range& Range::operator=(const Range& other) {
@@ -76,7 +77,7 @@ Range& Range::operator=(const Range& other) {
         this->valid = other.valid;
         this->size = other.size;
         this->timestamp = other.timestamp;
-        this->start_pos = other.start_pos;
+        this->subrange_view_start_pos = other.subrange_view_start_pos;
         
         if (other.valid && other.data) {
             this->data = std::make_shared<RangeData>();
@@ -98,45 +99,45 @@ Range& Range::operator=(Range&& other) noexcept {
         data = std::move(other.data);
         valid = other.valid;
         size = other.size;
-        start_pos = other.start_pos;
+        subrange_view_start_pos = other.subrange_view_start_pos;
         timestamp = other.timestamp;
         
         // Reset other object's state
         other.valid = false;
         other.size = 0;
-        other.start_pos = 0;
+        other.subrange_view_start_pos = -1;
         other.timestamp = 0;
     }
     return *this;
 }
 
 std::string& Range::startKey() const {
-    assert(valid && size > 0 && data->keys.size() > 0 && start_pos == 0);
-    return data->keys[start_pos];
+    assert(valid && size > 0 && data->keys.size() > 0 && subrange_view_start_pos == -1);
+    return data->keys[0];
 }
 
 std::string& Range::endKey() const {
-    assert(valid && size > 0 && data->keys.size() > 0 && start_pos == 0);
-    return data->keys[start_pos + size - 1];
+    assert(valid && size > 0 && data->keys.size() > 0 && subrange_view_start_pos == -1);
+    return data->keys[size - 1];
 }   
 
 std::string& Range::keyAt(size_t index) const {
-    assert(valid && size > index && start_pos == 0);
-    return data->keys[start_pos + index];
+    assert(valid && size > index && subrange_view_start_pos == -1);
+    return data->keys[index];
 }
 
 std::string& Range::valueAt(size_t index) const {
-    assert(valid && size > index && start_pos == 0);
-    return data->values[start_pos + index];
+    assert(valid && size > index && subrange_view_start_pos == -1);
+    return data->values[index];
 }
 
 std::vector<std::string>& Range::getKeys() const {
-    assert(valid && size > 0 && data->keys.size() > 0 && start_pos == 0);
+    assert(valid && size > 0 && data->keys.size() > 0 && subrange_view_start_pos == -1);
     return data->keys;
 }
 
 std::vector<std::string>& Range::getValues() const {
-    assert(valid && size > 0 && data->values.size() > 0 && start_pos == 0);
+    assert(valid && size > 0 && data->values.size() > 0 && subrange_view_start_pos == -1);
     return data->values;
 }
 
@@ -156,8 +157,14 @@ void Range::setTimestamp(int timestamp) const {
     this->timestamp = timestamp;
 }
 
+Range Range::subRangeView(size_t start_index, size_t end_index) const {
+    assert(valid && size > end_index && start_index >= 0 && subrange_view_start_pos == -1);
+    // the only code to create non-negative subrange_view_start_pos
+    return Range(data, start_index, end_index - start_index + 1);
+}
+
 Range Range::subRange(size_t start_index, size_t end_index) const {
-    assert(valid && size > end_index && data->keys.size() - start_pos > end_index && data->values.size() - start_pos > end_index);
+    assert(valid && size > end_index && subrange_view_start_pos == -1);
     
     // a subrange copy of the underlying data
     std::vector<std::string> sub_keys(
@@ -172,16 +179,9 @@ Range Range::subRange(size_t start_index, size_t end_index) const {
     return Range(std::move(sub_keys), std::move(sub_values), end_index - start_index + 1);
 }
 
-// the origin range will be invalid after this operation (turn to a temp subrange)
-Range Range::subRangeMoved(size_t start_index, size_t end_index) const {
-    assert(valid && size > end_index);
-    return Range(data, start_pos + start_index, end_index - start_index + 1);
-}
-
-// return the largest subrange in [start_key, end_key]
 Range Range::subRange(std::string start_key, std::string end_key) const {
     // use binary search to find the start and end index
-    assert(valid && size > 0 && data->keys.size() > 0);
+    assert(valid && size > 0 && data->keys.size() > 0 && subrange_view_start_pos == -1);
     // auto start_it = std::lower_bound(keys.begin(), keys.end(), start_key);
     // auto end_it = std::upper_bound(keys.begin(), keys.end(), end_key);
 
@@ -198,8 +198,8 @@ Range Range::subRange(std::string start_key, std::string end_key) const {
 }
 
 void Range::truncate(int length) const {
-    assert(valid && size > 0 && data->keys.size() > 0);
-    if (length < 0 || length > size || start_pos > 0) {
+    assert(valid && size > 0 && data->keys.size() > 0 && subrange_view_start_pos == -1);
+    if (length < 0 || length > size) {
         Logger::error("Invalid length to truncate");
         return;
     }
@@ -209,8 +209,8 @@ void Range::truncate(int length) const {
     size = length;
 }
 
-// return the first element index whose key is greater than or equal to key
 int Range::find(std::string key) const {
+    assert(valid && size > 0 && data->keys.size() > 0 && subrange_view_start_pos == -1);
     if (!valid || size == 0) {
         return -1;
     }
@@ -220,9 +220,9 @@ int Range::find(std::string key) const {
     
     while (left <= right) {
         int mid = left + (right - left) / 2;
-        if (data->keys[start_pos + mid] == key) {
-            return start_pos + mid;
-        } else if (data->keys[start_pos + mid] < key) {
+        if (data->keys[mid] == key) {
+            return mid;
+        } else if (data->keys[mid] < key) {
             left = mid + 1;
         } else {
             right = mid - 1;
@@ -232,7 +232,7 @@ int Range::find(std::string key) const {
     if (left >= size) {
         return -1;
     }
-    return start_pos + left;
+    return left;
 }
 
 std::string Range::toString() const {
@@ -275,17 +275,21 @@ Range Range::concatRangesMoved(std::vector<Range>& ranges) {
 
     // Move data from each range into the new combined range
     for (auto& range : ranges) {
-        auto src_data = range.getData(); 
-        size_t start = range.getStartPos();
+        auto src_data = range.data; 
+        int subrange_view_start_pos = range.subrange_view_start_pos;
+        int range_start = 0;
+        if (subrange_view_start_pos != -1) {
+            range_start = subrange_view_start_pos;
+        }
         size_t len = range.getSize();
         
         new_data->keys.insert(new_data->keys.end(),
-            std::make_move_iterator(src_data->keys.begin() + start),
-            std::make_move_iterator(src_data->keys.begin() + start + len));
+            std::make_move_iterator(src_data->keys.begin() + range_start),
+            std::make_move_iterator(src_data->keys.begin() + range_start + len));
         new_data->values.insert(new_data->values.end(),
-            std::make_move_iterator(src_data->values.begin() + start),
-            std::make_move_iterator(src_data->values.begin() + start + len));
+            std::make_move_iterator(src_data->values.begin() + range_start),
+            std::make_move_iterator(src_data->values.begin() + range_start + len));
     }
 
-    return Range(new_data, 0, total_size);
+    return Range(new_data, -1, total_size);
 }

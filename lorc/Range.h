@@ -16,14 +16,20 @@ private:
         std::vector<std::string> values;
     };
     std::shared_ptr<RangeData> data;
-    // Start position for subrange operations. If not 0, indicates this is a subrange view
-    size_t start_pos;  
     mutable size_t size;
     mutable bool valid;
     mutable int timestamp;
 
+    // Start position for subrange operations (default -1). If >= 0, indicates this is a subrange view, and only used in concatRangesMoved
+    int subrange_view_start_pos;  
+
+private:
+    // construct by data pointer and subrange_view_start_pos, it's a subrange view if subrange_view_start_pos >= 0
+    Range(std::shared_ptr<RangeData> data, int subrange_view_start_pos, size_t size);
+
 public:
     Range(bool valid = false);
+    ~Range();      
     // create from vector
     // Range::Range(std::vector<std::string>& keys, std::vector<std::string>& values, size_t size);
     Range(std::vector<std::string>&& keys, std::vector<std::string>&& values, size_t size);
@@ -31,9 +37,6 @@ public:
     Range(const Range& other);
     // move copy
     Range(Range&& other) noexcept;
-    // moved construction
-    Range(std::shared_ptr<RangeData> data, size_t start, size_t size);
-    ~Range();      
     Range& operator=(const Range& other);
     Range& operator=(Range&& other) noexcept;
 
@@ -51,12 +54,19 @@ public:
     int getTimestamp() const;
     void setTimestamp(int timestamp) const;
 
+    // the origin range will be invalid after this operation (turn to a temp subrange view only for concatRangesMoved)
+    Range subRangeView(size_t start_index, size_t end_index) const;
+
+    // get a subrange copy of the underlying data
     Range subRange(size_t start_index, size_t end_index) const;
-    Range subRangeMoved(size_t start_index, size_t end_index) const;
+
+    // get a subrange(the largest subrange in [start_key, end_key]) copy of the underlying data 
     Range subRange(std::string start_key, std::string end_key) const;
 
+    // truncate in place
     void truncate(int length) const;
 
+    // return the first element index whose key is < greater than or equal > to key
     int find(std::string key) const;
 
     std::string toString() const;
@@ -70,8 +80,4 @@ public:
     bool operator<(const Range& other) const {
         return startKey() < other.startKey();
     }
-
-    // Add new method to get reference to original data
-    std::shared_ptr<RangeData> getData() const { return data; }
-    size_t getStartPos() const { return start_pos; }
 };

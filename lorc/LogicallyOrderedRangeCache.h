@@ -83,8 +83,14 @@ public:
      */
     virtual void victim() = 0;
 
+    /**
+     * Calculate the full hit rate of range queries.
+     */
     virtual double fullHitRate() const = 0;
 
+    /**
+     * Calculate the hit size rate, which is the ratio of hit size to query size.
+     */
     virtual double hitSizeRate() const = 0;
 
 protected:

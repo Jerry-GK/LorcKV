@@ -37,7 +37,7 @@ void RBTreeRangeCache::putRange(Range&& newRange) {
         if (it->startKey() < newRange.startKey() && it->endKey() >= newRange.startKey()) {
             int leftSplitIdx = it->find(newRange.startKey()) - 1;
             if (leftSplitIdx >= 0 && leftSplitIdx < it->getSize()) {
-                leftRanges.emplace_back(std::move(it->subRangeMoved(0, leftSplitIdx)));
+                leftRanges.emplace_back(std::move(it->subRangeView(0, leftSplitIdx)));
             }
         }
 
@@ -48,7 +48,7 @@ void RBTreeRangeCache::putRange(Range&& newRange) {
                 rightSplitIdx++;
             }
             if (rightSplitIdx >= 0 && rightSplitIdx < it->getSize()) {
-                rightRanges.emplace_back(std::move(it->subRangeMoved(rightSplitIdx, it->getSize() - 1)));
+                rightRanges.emplace_back(std::move(it->subRangeView(rightSplitIdx, it->getSize() - 1)));
             }
         }
 
@@ -121,7 +121,7 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
             // full hit
             full_hit_count++;
             this->pinRange(it->startKey());
-            Range fullHitRange = it->subRange(start_key, end_key); // dont use subRangeMoved to preserve underlying data
+            Range fullHitRange = it->subRange(start_key, end_key); // dont use subRangeView to preserve underlying data
             hit_size += fullHitRange.getSize();
             result = CacheResult(true, false, std::move(fullHitRange), {});
         } else {
@@ -132,7 +132,7 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
             if (it!= by_start.end() && it->startKey() <= end_key && it->endKey() >= start_key) {
                 // partial hit
                 do {
-                    // dont use subRangeMoved to preserve underlying data
+                    // dont use subRangeView to preserve underlying data
                     partial_hit_ranges.emplace_back(std::move(it->subRange(
                         std::max(it->startKey(), start_key),
                         std::min(it->endKey(), end_key))));
@@ -177,7 +177,7 @@ void RBTreeRangeCache::victim() {
 
     // If multiple ranges exist, remove the victim
     // If only one range remains, truncate it to fit max_size
-    if (by_start.size() > 1) {
+    if (by_start.size() > 1 || this->max_size <= 0) {
         Logger::debug("Victim: " + it->toString());
         this->current_size -= by_length.begin()->first;
         by_start.erase(it);
