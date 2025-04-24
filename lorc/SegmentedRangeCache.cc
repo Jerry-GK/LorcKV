@@ -14,7 +14,7 @@ SegmentedRangeCache::~SegmentedRangeCache() {
     entries.clear();
 }
 
-void SegmentedRangeCache::putRange(const Range& newRange) {
+void SegmentedRangeCache::putRange(Range&& newRange) {
     std::vector<Range> overlappingRanges;
 
     // 查找所有与新Range重叠的旧Range
@@ -24,7 +24,7 @@ void SegmentedRangeCache::putRange(const Range& newRange) {
                          (newRange.startKey() <= it->getRange().endKey());
         if (isOverlap) {
             // 更新合并后的范围边界
-            overlappingRanges.push_back(it->getRange());
+            overlappingRanges.emplace_back(it->getRange());
             this->current_size -= it->getRange().getSize();
             it = entries.erase(it); // 移除旧Range
         } else {
@@ -33,8 +33,8 @@ void SegmentedRangeCache::putRange(const Range& newRange) {
     }
 
     // 合并数据：新Range数据优先，旧Range数据保留非重叠部分
-    std::vector<std::string> mergedKeys = newRange.getKeys();
-    std::vector<std::string> mergedValues = newRange.getValues();
+    std::vector<std::string>& mergedKeys = newRange.getKeys();
+    std::vector<std::string>& mergedValues = newRange.getValues();
 
 
     std::vector<std::string> oldLeftKeys;
@@ -47,8 +47,8 @@ void SegmentedRangeCache::putRange(const Range& newRange) {
         if (oldRange.startKey() < newRange.startKey()) {
             size_t splitIdx = 0;
             while (splitIdx < oldRange.getSize() && oldRange.keyAt(splitIdx) < newRange.startKey()) {
-                oldLeftKeys.push_back(oldRange.keyAt(splitIdx));
-                oldLeftValues.push_back(oldRange.valueAt(splitIdx));
+                oldLeftKeys.emplace_back(std::move(oldRange.keyAt(splitIdx)));
+                oldLeftValues.emplace_back(std::move(oldRange.valueAt(splitIdx)));
                 splitIdx++;
             }
         }
@@ -57,8 +57,8 @@ void SegmentedRangeCache::putRange(const Range& newRange) {
         if (oldRange.endKey() > newRange.endKey()) {
             size_t splitIdx = oldRange.getSize() - 1;
             while (splitIdx >= 0 && oldRange.keyAt(splitIdx) > newRange.endKey()) {
-                oldRightKeys.push_back(oldRange.keyAt(splitIdx));
-                oldRightValues.push_back(oldRange.valueAt(splitIdx));
+                oldRightKeys.emplace_back(std::move(oldRange.keyAt(splitIdx)));
+                oldRightValues.emplace_back(std::move(oldRange.valueAt(splitIdx)));
                 splitIdx--;
             }
             // reverse the order of oldRightKeys and oldRightValues
@@ -80,8 +80,8 @@ void SegmentedRangeCache::putRange(const Range& newRange) {
     // mergedKeys.erase(last, mergedKeys.end());
 
     // 创建合并后的新Range并插入缓存
-    Range mergedRange(mergedKeys, mergedValues, mergedKeys.size());
-    entries.push_back(SegmentedRangeCacheEntry(mergedRange, this->cache_timestamp++));
+    Range mergedRange(std::move(mergedKeys), std::move(mergedValues), mergedKeys.size());
+    entries.emplace_back(SegmentedRangeCacheEntry(mergedRange, this->cache_timestamp++));
 
     // 保持ranges按startKey有序
     std::sort(entries.begin(), entries.end(), 
@@ -118,11 +118,11 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
             this->pinRange(i);
             Range fullHitRange = entries[i].getRange().subRange(start_key, end_key);
             hit_size += fullHitRange.getSize();
-            result = CacheResult(true, false, fullHitRange, {});
+            result = CacheResult(true, false, std::move(fullHitRange), {});
             break;
         } else if (entries[i].getRange().startKey() <= end_key && entries[i].getRange().endKey() >= start_key) {
             // partial hit
-            partial_hit_ranges.push_back(entries[i].getRange().subRange(
+            partial_hit_ranges.emplace_back(entries[i].getRange().subRange(
                 std::max(entries[i].getRange().startKey(), start_key),
                 std::min(entries[i].getRange().endKey(), end_key)));
             this->pinRange(i); 
@@ -137,7 +137,7 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
         for (const auto& range : partial_hit_ranges) {
             hit_size += range.getSize();
         }
-        result = CacheResult(false, true, Range(false), partial_hit_ranges);
+        result = CacheResult(false, true, Range(false), std::move(partial_hit_ranges));
     } 
 
     return result;
@@ -153,7 +153,7 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
 //         Logger::debug("Truncate: " + entries[0].getRange().toString());
 //         Range truncatedRange = entries[0].getRange().subRange(0, this->max_size - 1);
 //         entries.erase(entries.begin());
-//         entries.push_back(SegmentedRangeCacheEntry(truncatedRange, this->cache_timestamp++));
+//         entries.emplace_back(SegmentedRangeCacheEntry(truncatedRange, this->cache_timestamp++));
 //         this->current_size = truncatedRange.getSize();
 //     } else {
 //         Logger::debug("Victim: " + entries[randomIndex].getRange().toString());
@@ -177,7 +177,7 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
 //                 Logger::debug("Truncate: " + minRangeIt->getRange().toString());
 //                 Range truncatedRange = minRangeIt->getRange().subRange(0, this->max_size - 1);
 //                 entries.erase(minRangeIt);
-//                 entries.push_back(SegmentedRangeCacheEntry(truncatedRange, this->cache_timestamp++));
+//                 entries.emplace_back(SegmentedRangeCacheEntry(truncatedRange, this->cache_timestamp++));
 //                 this->current_size = truncatedRange.getSize();
 //             } else {
 //                 Logger::debug("Victim: " + minRangeIt->getRange().toString());
@@ -231,7 +231,7 @@ void SegmentedRangeCache::victim() {
 //             Logger::debug("Truncate: " + minRangeIt->getRange().toString());
 //             Range truncatedRange = minRangeIt->getRange().subRange(0, this->max_size - 1);
 //             entries.erase(minRangeIt);
-//             entries.push_back(SegmentedRangeCacheEntry(truncatedRange, this->cache_timestamp++));
+//             entries.emplace_back(SegmentedRangeCacheEntry(truncatedRange, this->cache_timestamp++));
 //             this->current_size = truncatedRange.getSize();
 //         } else {
 //             Logger::debug("Victim: " + minRangeIt->getRange().toString());

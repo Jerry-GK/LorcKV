@@ -11,7 +11,8 @@ private:
         std::vector<std::string> values;
     };
     std::shared_ptr<RangeData> data;
-    size_t start_pos;  // subrange start
+    // subrange start (if it's not 0, it means this range is a subrange of the original range, and is only used for range concat)
+    size_t start_pos;  
     mutable size_t size;
     mutable bool valid;
     mutable int timestamp;
@@ -19,7 +20,8 @@ private:
 public:
     Range(bool valid = false);
     // create from vector
-    Range(std::vector<std::string> keys, std::vector<std::string> values, size_t size);
+    // Range::Range(std::vector<std::string>& keys, std::vector<std::string>& values, size_t size);
+    Range(std::vector<std::string>&& keys, std::vector<std::string>&& values, size_t size);
     // deep copy
     Range(const Range& other);
     // move copy
@@ -30,14 +32,14 @@ public:
     Range& operator=(const Range& other);
     Range& operator=(Range&& other) noexcept;
 
-    std::string startKey() const;
-    std::string endKey() const;
+    std::string& startKey() const;
+    std::string& endKey() const;
 
-    std::string keyAt(size_t index) const;
-    std::string valueAt(size_t index) const;
+    std::string& keyAt(size_t index) const;
+    std::string& valueAt(size_t index) const;
 
-    std::vector<std::string> getKeys() const;
-    std::vector<std::string> getValues() const;
+    std::vector<std::string>& getKeys() const;
+    std::vector<std::string>& getValues() const;
 
     size_t getSize() const;
     bool isValid() const;

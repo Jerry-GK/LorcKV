@@ -11,6 +11,7 @@ Range::Range(bool valid) {
 }
 
 Range::Range(const Range& other) {
+    // assert(false);
     this->valid = other.valid;
     this->size = other.size;
     this->timestamp = other.timestamp;
@@ -36,10 +37,20 @@ Range::Range(Range&& other) noexcept {
     other.timestamp = 0;
 }
 
-Range::Range(std::vector<std::string> keys, std::vector<std::string> values, size_t size) {
+// Range::Range(std::vector<std::string>& keys, std::vector<std::string>& values, size_t size) {
+//     data = std::make_shared<RangeData>();
+//     data->keys = keys;
+//     data->values = values;
+//     this->start_pos = 0;
+//     this->valid = true;
+//     this->size = size;
+//     this->timestamp = 0;
+// }
+
+Range::Range(std::vector<std::string>&& keys, std::vector<std::string>&& values, size_t size) {
     data = std::make_shared<RangeData>();
-    data->keys = keys;
-    data->values = values;
+    data->keys = std::move(keys);
+    data->values = std::move(values);
     this->start_pos = 0;
     this->valid = true;
     this->size = size;
@@ -60,6 +71,7 @@ Range::~Range() {
 
 Range& Range::operator=(const Range& other) {
     // RBTreeRangeCache should never call this
+    assert(false);
     if (this != &other) {
         this->valid = other.valid;
         this->size = other.size;
@@ -98,43 +110,34 @@ Range& Range::operator=(Range&& other) noexcept {
     return *this;
 }
 
-std::string Range::startKey() const {
-    assert(valid && size > 0 && data->keys.size() > 0);
-    if (data->keys.size() == 0) {
-        Logger::warn("keys is empty");
-    }
+std::string& Range::startKey() const {
+    assert(valid && size > 0 && data->keys.size() > 0 && start_pos == 0);
     return data->keys[start_pos];
 }
 
-std::string Range::endKey() const {
-    assert(valid && size > 0 && data->keys.size() > 0);
+std::string& Range::endKey() const {
+    assert(valid && size > 0 && data->keys.size() > 0 && start_pos == 0);
     return data->keys[start_pos + size - 1];
 }   
 
-std::string Range::keyAt(size_t index) const {
-    assert(valid && size > index);
+std::string& Range::keyAt(size_t index) const {
+    assert(valid && size > index && start_pos == 0);
     return data->keys[start_pos + index];
 }
 
-std::string Range::valueAt(size_t index) const {
-    assert(valid && size > index);
+std::string& Range::valueAt(size_t index) const {
+    assert(valid && size > index && start_pos == 0);
     return data->values[start_pos + index];
 }
 
-std::vector<std::string> Range::getKeys() const {
-    assert(valid && size > 0 && data->keys.size() > 0);
-    if (start_pos == 0)
-        return data->keys;
-    else
-        return std::vector<std::string>(data->keys.begin() + start_pos, data->keys.begin() + start_pos + size);
+std::vector<std::string>& Range::getKeys() const {
+    assert(valid && size > 0 && data->keys.size() > 0 && start_pos == 0);
+    return data->keys;
 }
 
-std::vector<std::string> Range::getValues() const {
-    assert(valid && size > 0 && data->values.size() > 0);
-    if (start_pos == 0)
-        return data->values;
-    else
-        return std::vector<std::string>(data->values.begin() + start_pos, data->values.begin() + start_pos + size);
+std::vector<std::string>& Range::getValues() const {
+    assert(valid && size > 0 && data->values.size() > 0 && start_pos == 0);
+    return data->values;
 }
 
 size_t Range::getSize() const {
@@ -155,13 +158,18 @@ void Range::setTimestamp(int timestamp) const {
 
 Range Range::subRange(size_t start_index, size_t end_index) const {
     assert(valid && size > end_index && data->keys.size() - start_pos > end_index && data->values.size() - start_pos > end_index);
-    std::vector<std::string> sub_keys;
-    std::vector<std::string> sub_values;
-    for (size_t i = start_index; i <= end_index; i++) {
-        sub_keys.push_back(data->keys[i]);
-        sub_values.push_back(data->values[i]);
-    }
-    return Range(sub_keys, sub_values, end_index - start_index + 1);
+    
+    // a subrange copy of the underlying data
+    std::vector<std::string> sub_keys(
+        data->keys.begin() + start_index,
+        data->keys.begin() + end_index + 1
+    );
+    std::vector<std::string> sub_values(
+        data->values.begin() + start_index,
+        data->values.begin() + end_index + 1
+    );
+    
+    return Range(std::move(sub_keys), std::move(sub_values), end_index - start_index + 1);
 }
 
 // the origin range will be invalid after this operation (turn to a temp subrange)
@@ -169,17 +177,6 @@ Range Range::subRangeMoved(size_t start_index, size_t end_index) const {
     assert(valid && size > end_index);
     return Range(data, start_pos + start_index, end_index - start_index + 1);
 }
-
-// Range Range::subRange(std::string start_key, std::string end_key) const {
-//     assert(valid && size > 0 && keys.size() > 0);
-//     auto start_it = std::lower_bound(keys.begin(), keys.end(), start_key);
-//     auto end_it = std::upper_bound(keys.begin(), keys.end(), end_key);
-
-//     size_t start_index = std::distance(keys.begin(), start_it);
-//     size_t end_index = std::distance(keys.begin(), end_it) - 1;
-
-//     return this->subRange(start_index, end_index);
-// }
 
 // return the largest subrange in [start_key, end_key]
 Range Range::subRange(std::string start_key, std::string end_key) const {
@@ -258,7 +255,7 @@ Range Range::concatRanges(std::vector<Range>& ranges) {
         mergedValues.insert(mergedValues.end(), values.begin(), values.end());
     }
     
-    return Range(mergedKeys, mergedValues, mergedKeys.size());
+    return Range(std::move(mergedKeys), std::move(mergedValues), mergedKeys.size());
 }
 
 Range Range::concatRangesMoved(std::vector<Range>& ranges) {

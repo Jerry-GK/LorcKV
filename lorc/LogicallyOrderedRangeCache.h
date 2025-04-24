@@ -8,19 +8,18 @@
 
 class CacheResult {
 public:
-    // 接收右值的构造函数
-    CacheResult(bool full_hit, bool partial_hit, Range&& full_hit_range,
-                const std::vector<Range>& partial_hit_ranges)
-        : full_hit(full_hit), partial_hit(partial_hit),
-          full_hit_range(std::make_unique<Range>(std::move(full_hit_range))), 
-          partial_hit_ranges(partial_hit_ranges) {}
+    // CacheResult(bool full_hit, bool partial_hit, Range& full_hit_range,
+    //             const std::vector<Range>& partial_hit_ranges)
+    //     : full_hit(full_hit), partial_hit(partial_hit),
+    //       full_hit_range(full_hit_range), 
+    //       partial_hit_ranges(partial_hit_ranges) {}
 
-    // 接收左值的构造函数
-    CacheResult(bool full_hit, bool partial_hit, const Range& full_hit_range,
-                const std::vector<Range>& partial_hit_ranges)
+    // 修改构造函数，删除const，使用移动语义
+    CacheResult(bool full_hit, bool partial_hit, Range&& full_hit_range,
+                std::vector<Range>&& partial_hit_ranges)
         : full_hit(full_hit), partial_hit(partial_hit),
-          full_hit_range(std::make_unique<Range>(full_hit_range)), 
-          partial_hit_ranges(partial_hit_ranges) {}
+          full_hit_range(std::move(full_hit_range)), 
+          partial_hit_ranges(std::move(partial_hit_ranges)) {}
 
     // 移动构造函数
     CacheResult(CacheResult&& other) noexcept
@@ -46,12 +45,12 @@ public:
 
     bool isFullHit() const { return full_hit; }
     bool isPartialHit() const { return partial_hit; }
-    const Range& getFullHitRange() const { return *full_hit_range; }
+    const Range& getFullHitRange() const { return full_hit_range; }
     const std::vector<Range>& getPartialHitRanges() const { return partial_hit_ranges; }
 private:
     bool full_hit;
     bool partial_hit;
-    std::unique_ptr<Range> full_hit_range;
+    Range full_hit_range;
     std::vector<Range> partial_hit_ranges;
 };
 
@@ -62,7 +61,7 @@ public:
     virtual ~LogicallyOrderedRangeCache();
 
     // insert a key-value range into the cache, update overlapped exsisting ranges
-    virtual void putRange(const Range& range) = 0;
+    virtual void putRange(Range&& range) = 0;
 
     // lookup a key-value range in the cache
     virtual CacheResult getRange(const std::string& start_key, const std::string& end_key) = 0;

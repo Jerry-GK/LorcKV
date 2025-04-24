@@ -12,7 +12,7 @@ public:
 RBTreeRangeCache(int max_size);
     ~RBTreeRangeCache() override;
 
-    void putRange(const Range& range) override;
+    void putRange(Range&& range) override;
     CacheResult getRange(const std::string& start_key, const std::string& end_key) override;
     void victim() override;
     double fullHitRate() const override;

@@ -15,7 +15,7 @@ RBTreeRangeCache::~RBTreeRangeCache() {
     by_length.clear();
 }
 
-void RBTreeRangeCache::putRange(const Range& newRange) {
+void RBTreeRangeCache::putRange(Range&& newRange) {
     // 合并数据：新Range数据优先，旧Range数据保留非重叠部分
     std::vector<Range> leftRanges; // at most one
     std::vector<Range> rightRanges; // at most one
@@ -37,7 +37,7 @@ void RBTreeRangeCache::putRange(const Range& newRange) {
         if (it->startKey() < newRange.startKey() && it->endKey() >= newRange.startKey()) {
             int leftSplitIdx = it->find(newRange.startKey()) - 1;
             if (leftSplitIdx >= 0 && leftSplitIdx < it->getSize()) {
-                leftRanges.push_back(std::move(it->subRangeMoved(0, leftSplitIdx)));
+                leftRanges.emplace_back(std::move(it->subRangeMoved(0, leftSplitIdx)));
             }
         }
 
@@ -48,7 +48,7 @@ void RBTreeRangeCache::putRange(const Range& newRange) {
                 rightSplitIdx++;
             }
             if (rightSplitIdx >= 0 && rightSplitIdx < it->getSize()) {
-                rightRanges.push_back(std::move(it->subRangeMoved(rightSplitIdx, it->getSize() - 1)));
+                rightRanges.emplace_back(std::move(it->subRangeMoved(rightSplitIdx, it->getSize() - 1)));
             }
         }
 
@@ -70,16 +70,17 @@ void RBTreeRangeCache::putRange(const Range& newRange) {
         return;
     }
     std::vector<Range> mergedRanges;
-    mergedRanges.reserve(leftRanges.size() + 1 + rightRanges.size());  // 预分配空间
-    // avoid deep copy here!
-    for (auto& range : leftRanges) {
-        mergedRanges.push_back(std::move(range));
+    mergedRanges.reserve(leftRanges.size() + 1 + rightRanges.size());
+    
+    // 使用 emplace_back 和 std::move 来避免不必要的拷贝
+    for (Range& range : leftRanges) {
+        mergedRanges.emplace_back(std::move(range));
     }
-    mergedRanges.push_back(std::move(newRange));
-    for (auto& range : rightRanges) {
-        mergedRanges.push_back(std::move(range));
+    mergedRanges.emplace_back(std::move(newRange));
+    for (Range& range : rightRanges) {
+        mergedRanges.emplace_back(std::move(range));
     }
-    // Range mergedRange = Range::concatRanges(mergedRanges);
+    
     Range mergedRange = Range::concatRangesMoved(mergedRanges);
     
     // add the new merged range
@@ -129,7 +130,7 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
                 // partial hit
                 do {
                     // dont use subRangeMoved to preserve underlying data
-                    partial_hit_ranges.push_back(std::move(it->subRange(
+                    partial_hit_ranges.emplace_back(std::move(it->subRange(
                         std::max(it->startKey(), start_key),
                         std::min(it->endKey(), end_key))));
                     this->pinRange(it->startKey());

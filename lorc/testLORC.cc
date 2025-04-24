@@ -9,24 +9,38 @@
 #include <iomanip>
 #include <fstream>
 
-const int start_key =  1000;
-const int end_key = 9999;
-const double cache_size_ratio = 0.5;
+const int num_keys_level = 1000000;
+const int start_key = num_keys_level;
+const int end_key = 10 * num_keys_level - 1;
+const int value_size = 4096;
+const double cache_size_ratio = 0.25;
+
+std::string genValueStr(std::string key) {
+    std::string value_postfix = "value@" + key + "@" + std::to_string(rand() % 100);
+    int prefix_len = value_size - value_postfix.length();
+    if (prefix_len < 0) {
+        Logger::error("Value size is too small for key: " + key);
+        return "";
+    }
+    std::string value = std::string(prefix_len, 'a');
+    value += value_postfix;
+    return value;
+}
 
 int main() {
-    Logger::setEnabled(true);
+    Logger::setEnabled(false);
     Logger::setLevel(Logger::DEBUG); 
     Logger::info("Start testing...");
     int cache_size = (end_key - start_key + 1) * cache_size_ratio;
     // LogicallyOrderedRangeCache* lorc = new SegmentedRangeCache(cache_size);
     LogicallyOrderedRangeCache* lorc = new RBTreeRangeCache(cache_size);
 
-    const int min_range_len = 200;
-    const int max_range_len = 200;
-    const int num_queries = 50000;
+    const int min_range_len = 1;
+    const int max_range_len = num_keys_level * 10 * 0.01;
+    const int num_queries = 500;
 
     const double update_ratio = 0.2;
-    const bool do_validation = true;
+    const bool do_validation = false;
 
     std::unordered_map<std::string, std::string> standard_cache;
     
@@ -35,25 +49,27 @@ int main() {
 
     // init standard_cache
     for (int i = start_key; i <=end_key; i++) {
-        standard_cache[std::to_string(i)] = "value@" + std::to_string(i) + "@" + std::to_string(rand() % 100);
+        standard_cache[std::to_string(i)] = genValueStr(std::to_string(i));
     }
 
     Logger::info("Standard cache initialized! Start testing LORC...");
     // randomly generate num_queries queries
     bool validationSuccess = true;
     for (int i = 0; i < num_queries; i++) {
+        Logger::info("Query " + std::to_string(i) + " / " + std::to_string(num_queries) + " (" + std::to_string((double)i / num_queries * 100) + "%)");
+        
         int range_len = rand() % (max_range_len - min_range_len + 1) + min_range_len;
         int start = rand() % (end_key - start_key - range_len) + start_key;
         int end = start + range_len - 1;
 
-        CacheResult result = lorc->getRange(std::to_string(start), std::to_string(end));
+        const CacheResult& result = lorc->getRange(std::to_string(start), std::to_string(end));
         if (result.isFullHit()) {
             // full hit
             if (do_validation) {
                 // cache hit
-                Range full_hit_range = result.getFullHitRange();
-                std::vector<std::string> keys = full_hit_range.getKeys();
-                std::vector<std::string> values = full_hit_range.getValues();
+                const Range& full_hit_range = result.getFullHitRange(); // auto moved
+                std::vector<std::string>& keys = full_hit_range.getKeys();
+                std::vector<std::string>& values = full_hit_range.getValues();
     
                 for (int j = 0; j < keys.size(); j++) {
                     std::string key = keys[j];
@@ -74,11 +90,10 @@ int main() {
             }
         } else if (result.isPartialHit()) {
             // partial hit
-            std::vector<Range> partial_hit_ranges = result.getPartialHitRanges();
+            const std::vector<Range>& partial_hit_ranges = result.getPartialHitRanges();
             for (size_t j = 0; j < partial_hit_ranges.size(); j++) {
-                Range partial_hit_range = partial_hit_ranges[j];
-                std::vector<std::string> keys = partial_hit_range.getKeys();
-                std::vector<std::string> values = partial_hit_range.getValues();
+                std::vector<std::string>& keys = partial_hit_ranges[j].getKeys();
+                std::vector<std::string>& values = partial_hit_ranges[j].getValues();
 
                 if (do_validation) {
                     for (int k = 0; k < keys.size(); k++) {
@@ -107,19 +122,19 @@ int main() {
                 std::string curKey = std::to_string(cur);
                 if (curKey >= partial_hit_ranges[curPartialRangeIndex].startKey() && curKey <= partial_hit_ranges[curPartialRangeIndex].endKey()) {
                     // this key is in the partial hit range
-                    keys.push_back(curKey);
-                    values.push_back(partial_hit_ranges[curPartialRangeIndex].valueAt(cur - std::stoi(partial_hit_ranges[curPartialRangeIndex].startKey())));
+                    keys.emplace_back(curKey);
+                    values.emplace_back(std::move(partial_hit_ranges[curPartialRangeIndex].valueAt(cur - std::stoi(partial_hit_ranges[curPartialRangeIndex].startKey()))));
                 } else {
                     // this key is not in the partial hit range
-                    keys.push_back(curKey);
-                    values.push_back(standard_cache[curKey]);   // query from standard cache
+                    keys.emplace_back(curKey);
+                    values.emplace_back(standard_cache[curKey]);   // query from standard cache
                     if (curPartialRangeIndex < partial_hit_ranges.size() - 1) {
                         curPartialRangeIndex++;
                     }
                 }
                 cur++;
             }
-            lorc->putRange(Range(keys, values, end - start + 1));
+            lorc->putRange(Range(std::move(keys), std::move(values), end - start + 1));
         } else {
             // no hit
             std::vector<std::string> keys;
@@ -128,17 +143,17 @@ int main() {
                 std::string key = std::to_string(j);
                 // update_ratio for standard_cache has been updated
                 if (rand() % 100 < update_ratio * 100) {
-                    standard_cache[key] = "value@" + key + "@" + std::to_string(rand() % 100);
+                    standard_cache[key] = genValueStr(key);
                 }
-                keys.push_back(key);
-                values.push_back(standard_cache[key]);
+                keys.emplace_back(key);
+                values.emplace_back(standard_cache[key]);
             }
-            lorc->putRange(Range(keys, values, end - start + 1)); 
+            lorc->putRange(Range(std::move(keys), std::move(values), end - start + 1)); 
         }
 
         Logger::info("Current full hit rate: " + std::to_string(lorc->fullHitRate() * 100) + "%");
         Logger::info("Current hit size rate: " + std::to_string(lorc->hitSizeRate() * 100) + "%");
-        hitrates.push_back(lorc->fullHitRate());
+        hitrates.emplace_back(lorc->fullHitRate());
     }
 
     if (validationSuccess) {
