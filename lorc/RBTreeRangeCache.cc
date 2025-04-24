@@ -16,6 +16,11 @@ RBTreeRangeCache::~RBTreeRangeCache() {
 }
 
 void RBTreeRangeCache::putRange(Range&& newRange) {
+    std::chrono::high_resolution_clock::time_point start_time;
+    if (this->enable_statistic) {
+        start_time = std::chrono::high_resolution_clock::now();
+    }
+    
     // Merge strategy: new range data takes priority, old range data keeps non-overlapping parts
     std::vector<Range> leftRanges;  // Store the left part of split ranges (at most one)
     std::vector<Range> rightRanges; // Store the right part of split ranges (at most one)
@@ -103,9 +108,21 @@ void RBTreeRangeCache::putRange(Range&& newRange) {
     }
     Logger::debug("Total range size: " + std::to_string(this->current_size));
     Logger::debug("----------------------------------------");
+
+    if (this->enable_statistic) {
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+        this->cache_statistic.putRangeNum++;
+        this->cache_statistic.putRangeTotalTime += duration.count();
+    }
 }
 
 CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::string& end_key) {
+    std::chrono::high_resolution_clock::time_point start_time;
+    if (this->enable_statistic) {
+        start_time = std::chrono::high_resolution_clock::now();
+    }
+    
     Logger::debug("Get Range: < " + start_key + " -> " + end_key + " >");
     CacheResult result(false, false, Range(false), {});
     std::vector<Range> partial_hit_ranges;
@@ -159,6 +176,13 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
         result = CacheResult(false, true, Range(false), std::move(partial_hit_ranges));
     } 
 
+    if (this->enable_statistic) {
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+        this->cache_statistic.getRangeNum++;
+        this->cache_statistic.getRangeTotalTime += duration.count();
+    }
+    
     return result;
 }
 

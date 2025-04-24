@@ -15,6 +15,11 @@ RowRangeCache::~RowRangeCache() {
 }
 
 void RowRangeCache::putRange(Range&& newRange) {
+    std::chrono::high_resolution_clock::time_point start_time;
+    if (this->enable_statistic) {
+        start_time = std::chrono::high_resolution_clock::now();
+    }
+
     std::string newRangeStr = newRange.toString();
     // put all key-value pair in newRange into row_map, no copy
     for (int i = 0; i < newRange.getSize(); i++) {
@@ -32,9 +37,21 @@ void RowRangeCache::putRange(Range&& newRange) {
     Logger::debug("All ranges after putRange and victim: " + newRangeStr);
     Logger::debug("Total range size: " + std::to_string(this->current_size));
     Logger::debug("----------------------------------------");
+
+    if (this->enable_statistic) {
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+        this->cache_statistic.putRangeNum++;
+        this->cache_statistic.putRangeTotalTime += duration.count();
+    }
 }
 
 CacheResult RowRangeCache::getRange(const std::string& start_key, const std::string& end_key) {
+    std::chrono::high_resolution_clock::time_point start_time;
+    if (this->enable_statistic) {
+        start_time = std::chrono::high_resolution_clock::now();
+    }
+
     Logger::debug("Get Range: < " + start_key + " -> " + end_key + " >");
     CacheResult result(false, false, Range(false), {});
     std::vector<std::string> keys;
@@ -66,6 +83,13 @@ CacheResult RowRangeCache::getRange(const std::string& start_key, const std::str
     query_size += std::stoi(end_key) - std::stoi(start_key) + 1;
 
     // no partial hit for RowRangeCache
+
+    if (this->enable_statistic) {
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+        this->cache_statistic.getRangeNum++;
+        this->cache_statistic.getRangeTotalTime += duration.count();
+    }
 
     return result;
 }

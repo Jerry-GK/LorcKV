@@ -5,6 +5,7 @@
 #include <string>
 #include <memory>
 #include "Range.h"
+#include <chrono>
 
 /**
  * Class that represents the result of a cache lookup operation.
@@ -60,6 +61,27 @@ private:
     std::vector<Range> partial_hit_ranges;
 };
 
+class CacheStatistic {
+public:
+    CacheStatistic() : putRangeNum(0), getRangeNum(0), putRangeTotalTime(0), getRangeTotalTime(0) {}
+    CacheStatistic(int putRangeNum, int getRangeNum, int64_t putRangeTotalTime, int64_t getRangeTotalTime)
+        : putRangeNum(putRangeNum), getRangeNum(getRangeNum),
+          putRangeTotalTime(putRangeTotalTime), getRangeTotalTime(getRangeTotalTime) {}
+
+    int64_t getAvgPutRangeTime() const {
+        return putRangeNum == 0 ? 0 : putRangeTotalTime / putRangeNum;
+    }
+
+    int64_t getAvgGetRangeTime() const {
+        return getRangeNum == 0 ? 0 : getRangeTotalTime / getRangeNum;
+    }
+
+    int putRangeNum;
+    int getRangeNum;
+    int64_t putRangeTotalTime;  // microseconds(us)
+    int64_t getRangeTotalTime;  // microseconds(us)
+};
+
 // This is a cache for ranges. Key-Value Ranges is the smallest unit of data that can be cached.
 class LogicallyOrderedRangeCache {
 public:
@@ -93,6 +115,21 @@ public:
      */
     virtual double hitSizeRate() const = 0;
 
+    /**
+     * Get enableStatistic
+     */
+    bool enableStatistic() const;
+
+    /**
+     * Set enableStatistic
+     */
+    void setEnableStatistic(bool enable_statistic);
+
+    /**
+     * Get cache statistics
+     */
+    CacheStatistic getCacheStatistic() const;
+
 protected:
     int max_size;
     int current_size;
@@ -100,4 +137,7 @@ protected:
     int full_query_count;
     int hit_size;
     int query_size;
+
+    bool enable_statistic; // initialize to false
+    CacheStatistic cache_statistic;
 };

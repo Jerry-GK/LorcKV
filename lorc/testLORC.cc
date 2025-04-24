@@ -45,6 +45,7 @@ int main() {
     // LogicallyOrderedRangeCache* lorc = new SegmentedRangeCache(cache_size);
     // LogicallyOrderedRangeCache* lorc = new RowRangeCache(cache_size);
     LogicallyOrderedRangeCache* lorc = new RBTreeRangeCache(cache_size);
+    lorc->setEnableStatistic(true);
 
     std::unordered_map<std::string, std::string> standard_kv;
     
@@ -179,14 +180,23 @@ int main() {
     // std::cout << "Estimated coverage: " << std::fixed << std::setprecision(3) << cover * 100 << "%" << std::endl;
 
     // output hitrates to hitrates.csv
-    std::ofstream hitrate_file("output/hitrates.csv");
-    if (hitrate_file.is_open()) {
-        for (size_t i = 0; i < hitrates.size(); i++) {
-            hitrate_file << i + 1 << ", " << hitrates[i] << std::endl;
-        }
-        hitrate_file.close();
-    } else {
-        Logger::error("Unable to open file");
+    // std::ofstream hitrate_file("output/hitrates.csv");
+    // if (hitrate_file.is_open()) {
+    //     for (size_t i = 0; i < hitrates.size(); i++) {
+    //         hitrate_file << i + 1 << ", " << hitrates[i] << std::endl;
+    //     }
+    //     hitrate_file.close();
+    // } else {
+    //     Logger::error("Unable to open file");
+    // }
+
+    // output cache statistic
+    if (lorc->enableStatistic()) {
+        std::cout << "Cache Statistic:" << std::endl;
+        std::cout << "Put Range Num: " << lorc->getCacheStatistic().putRangeNum << std::endl;
+        std::cout << "Get Range Num: " << lorc->getCacheStatistic().getRangeNum << std::endl;
+        std::cout << "Avg Put Range Time: " << lorc->getCacheStatistic().getAvgPutRangeTime() << " us" << std::endl;
+        std::cout << "Avg Get Range Time: " << lorc->getCacheStatistic().getAvgGetRangeTime() << " us" << std::endl;
     }
 
     delete lorc;

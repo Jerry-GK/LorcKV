@@ -15,6 +15,11 @@ SegmentedRangeCache::~SegmentedRangeCache() {
 }
 
 void SegmentedRangeCache::putRange(Range&& newRange) {
+    std::chrono::high_resolution_clock::time_point start_time;
+    if (this->enable_statistic) {
+        start_time = std::chrono::high_resolution_clock::now();
+    }
+
     std::vector<Range> overlappingRanges;
     std::string newRangeStr = newRange.toString();
 
@@ -106,9 +111,21 @@ void SegmentedRangeCache::putRange(Range&& newRange) {
     }
     Logger::debug("Total range size: " + std::to_string(this->current_size));
     Logger::debug("----------------------------------------");
+
+    if (this->enable_statistic) {
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+        this->cache_statistic.putRangeNum++;
+        this->cache_statistic.putRangeTotalTime += duration.count();
+    }
 }
 
 CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const std::string& end_key) {
+    std::chrono::high_resolution_clock::time_point start_time;
+    if (this->enable_statistic) {
+        start_time = std::chrono::high_resolution_clock::now();
+    }
+
     Logger::debug("Get Range: < " + start_key + " -> " + end_key + " >");
     CacheResult result(false, false, Range(false), {});
     std::vector<Range> partial_hit_ranges;
@@ -140,6 +157,13 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
         }
         result = CacheResult(false, true, Range(false), std::move(partial_hit_ranges));
     } 
+
+    if (this->enable_statistic) {
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+        this->cache_statistic.getRangeNum++;
+        this->cache_statistic.getRangeTotalTime += duration.count();
+    }
 
     return result;
 }
