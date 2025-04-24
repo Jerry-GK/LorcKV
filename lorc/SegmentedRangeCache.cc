@@ -16,6 +16,7 @@ SegmentedRangeCache::~SegmentedRangeCache() {
 
 void SegmentedRangeCache::putRange(Range&& newRange) {
     std::vector<Range> overlappingRanges;
+    std::string newRangeStr = newRange.toString();
 
     // Find all ranges that overlap with the new range
     auto it = entries.begin();
@@ -98,7 +99,7 @@ void SegmentedRangeCache::putRange(Range&& newRange) {
 
     // Debug output: print all ranges' startKey and endKey in order
     Logger::debug("----------------------------------------");
-    Logger::debug("All ranges after putRange and victim: " + newRange.toString());
+    Logger::debug("All ranges after putRange and victim: " + newRangeStr);
     for (int i = 0; i < this->entries.size(); i++) {
         const Range& range = this->entries[i].getRange();
         Logger::debug("Range[" + std::to_string(i+1) + "]: " + range.toString());

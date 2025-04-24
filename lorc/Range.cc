@@ -72,7 +72,7 @@ Range::Range(std::shared_ptr<RangeData> data, int subrange_view_start_pos, size_
 
 Range& Range::operator=(const Range& other) {
     // RBTreeRangeCache should never call this
-    assert(false);
+    // assert(false);
     if (this != &other) {
         this->valid = other.valid;
         this->size = other.size;
