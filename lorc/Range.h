@@ -4,6 +4,11 @@
 #include <vector>
 #include <memory>
 
+/**
+ * @brief Range class represents a sorted key-value range in memory
+ * It supports range operations like subrange and concatenation
+ * with optimized memory management using shared_ptr
+ */
 class Range {
 private:
     struct RangeData {
@@ -11,7 +16,7 @@ private:
         std::vector<std::string> values;
     };
     std::shared_ptr<RangeData> data;
-    // subrange start (if it's not 0, it means this range is a subrange of the original range, and is only used for range concat)
+    // Start position for subrange operations. If not 0, indicates this is a subrange view
     size_t start_pos;  
     mutable size_t size;
     mutable bool valid;
@@ -56,18 +61,17 @@ public:
 
     std::string toString() const;
 
-    // concat ranges that is ordered and not overlapping
+    // Merge ordered and non-overlapping ranges
     static Range concatRanges(std::vector<Range>& ranges);
-
 
     static Range concatRangesMoved(std::vector<Range>& ranges);
 
-    // 定义比较运算符，按startKey从小到大排序
+    // Define comparison operator, sort by startKey in ascending order
     bool operator<(const Range& other) const {
         return startKey() < other.startKey();
     }
 
-    // 添加新方法来获取原始数据的引用
+    // Add new method to get reference to original data
     std::shared_ptr<RangeData> getData() const { return data; }
     size_t getStartPos() const { return start_pos; }
 };

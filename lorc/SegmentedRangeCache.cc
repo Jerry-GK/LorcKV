@@ -17,33 +17,33 @@ SegmentedRangeCache::~SegmentedRangeCache() {
 void SegmentedRangeCache::putRange(Range&& newRange) {
     std::vector<Range> overlappingRanges;
 
-    // 查找所有与新Range重叠的旧Range
+    // Find all ranges that overlap with the new range
     auto it = entries.begin();
     while (it != entries.end()) {
         bool isOverlap = (newRange.endKey() >= it->getRange().startKey()) && 
                          (newRange.startKey() <= it->getRange().endKey());
         if (isOverlap) {
-            // 更新合并后的范围边界
+            // Update merged range boundaries
             overlappingRanges.emplace_back(it->getRange());
             this->current_size -= it->getRange().getSize();
-            it = entries.erase(it); // 移除旧Range
+            it = entries.erase(it); // Remove old range
         } else {
             ++it;
         }
     }
 
-    // 合并数据：新Range数据优先，旧Range数据保留非重叠部分
+    // Merge data: new range data takes priority, preserve non-overlapping parts of old ranges
     std::vector<std::string>& mergedKeys = newRange.getKeys();
     std::vector<std::string>& mergedValues = newRange.getValues();
-
 
     std::vector<std::string> oldLeftKeys;
     std::vector<std::string> oldLeftValues;
     std::vector<std::string> oldRightKeys;
     std::vector<std::string> oldRightValues;
-    // 添加旧Range中非重叠部分的数据
+    
+    // Add non-overlapping data from old ranges
     for (const auto& oldRange : overlappingRanges) {
-        // 处理旧Range左侧非重叠部分（startKey < newRange.startKey()
+        // Process left non-overlapping part (startKey < newRange.startKey())
         if (oldRange.startKey() < newRange.startKey()) {
             size_t splitIdx = 0;
             while (splitIdx < oldRange.getSize() && oldRange.keyAt(splitIdx) < newRange.startKey()) {
@@ -53,7 +53,7 @@ void SegmentedRangeCache::putRange(Range&& newRange) {
             }
         }
 
-        // 处理旧Range右侧非重叠部分（endKey > newRange.endKey())
+        // Process right non-overlapping part (endKey > newRange.endKey())
         if (oldRange.endKey() > newRange.endKey()) {
             size_t splitIdx = oldRange.getSize() - 1;
             while (splitIdx >= 0 && oldRange.keyAt(splitIdx) > newRange.endKey()) {
@@ -83,7 +83,7 @@ void SegmentedRangeCache::putRange(Range&& newRange) {
     Range mergedRange(std::move(mergedKeys), std::move(mergedValues), mergedKeys.size());
     entries.emplace_back(SegmentedRangeCacheEntry(mergedRange, this->cache_timestamp++));
 
-    // 保持ranges按startKey有序
+    // Keep ranges ordered by startKey
     std::sort(entries.begin(), entries.end(), 
         [](const SegmentedRangeCacheEntry& a, const SegmentedRangeCacheEntry& b) {
             return a.getRange().startKey() < b.getRange().startKey();
@@ -96,7 +96,7 @@ void SegmentedRangeCache::putRange(Range&& newRange) {
         this->victim();
     }
 
-    // print all ranges's startKey and endKey in order
+    // Debug output: print all ranges' startKey and endKey in order
     Logger::debug("----------------------------------------");
     Logger::debug("All ranges after putRange and victim: " + newRange.toString());
     for (int i = 0; i < this->entries.size(); i++) {
@@ -190,22 +190,25 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
 // }
 
 void SegmentedRangeCache::victim() {
-    // victim the shortest range
+    // Remove the shortest range to make space
     if (this->current_size <= this->max_size) {
         return;
     }
+    
+    // Find the range with minimum size
     auto minRangeIt = std::min_element(entries.begin(), entries.end(),
         [](const SegmentedRangeCacheEntry& a, const SegmentedRangeCacheEntry& b) {
             return a.getRange().getSize() < b.getRange().getSize();
         });
+    
     if (minRangeIt != entries.end()) {
-        // only truncate if there is only one range left (seldom triggered)
+        // If there are multiple ranges, remove the shortest one
         if (entries.size() > 1) {
             Logger::debug("Victim: " + minRangeIt->getRange().toString());
             this->current_size -= minRangeIt->getRange().getSize();
             entries.erase(minRangeIt);
         } else {
-            // truncate the range
+            // If only one range exists, truncate it
             Logger::debug("Truncate: " + minRangeIt->getRange().toString());
             minRangeIt->getRange().truncate(this->max_size);
             this->pinRange(0);

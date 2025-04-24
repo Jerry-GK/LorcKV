@@ -7,9 +7,13 @@
 #include "LogicallyOrderedRangeCache.h"
 #include "Logger.h"
 
+/**
+ * RBTreeRangeCache: A cache implementation using Red-Black Tree to store range data
+ * Uses ordered containers to maintain ranges sorted by their start keys and lengths
+ */
 class RBTreeRangeCache : public LogicallyOrderedRangeCache {
 public:
-RBTreeRangeCache(int max_size);
+    RBTreeRangeCache(int max_size);
     ~RBTreeRangeCache() override;
 
     void putRange(Range&& range) override;
@@ -18,10 +22,13 @@ RBTreeRangeCache(int max_size);
     double fullHitRate() const override;
     double hitSizeRate() const override;
 
+    /**
+     * Update the timestamp of a range to mark it as recently used.
+     */
     void pinRange(std::string startKey);
     
 private:
-    std::set<Range> by_start; // ?start??
-    std::multimap<int, std::string> by_length; // ?length????????
-    int cache_timestamp;
+    std::set<Range> by_start;     // Container for ranges sorted by start key
+    std::multimap<int, std::string> by_length;  // Container for ranges sorted by length (for victim selection)
+    int cache_timestamp;          // Timestamp for LRU-like functionality
 };

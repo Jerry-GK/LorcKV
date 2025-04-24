@@ -18,7 +18,7 @@ public:
     static void warn(const std::string& message);
     static void error(const std::string& message);
 
-    static Level currentLevel;  // 改为public，便于直接访问
+    static Level currentLevel;
     static bool enabled;
     static std::string getLevelString(Level level);
 };

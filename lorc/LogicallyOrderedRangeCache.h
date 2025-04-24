@@ -6,29 +6,35 @@
 #include <memory>
 #include "Range.h"
 
+/**
+ * Class that represents the result of a cache lookup operation.
+ * It can indicate either a full hit, partial hit, or miss,
+ * and contains the relevant range data.
+ */
 class CacheResult {
 public:
+    // Deprecated constructor that used references instead of move semantics
     // CacheResult(bool full_hit, bool partial_hit, Range& full_hit_range,
     //             const std::vector<Range>& partial_hit_ranges)
     //     : full_hit(full_hit), partial_hit(partial_hit),
     //       full_hit_range(full_hit_range), 
     //       partial_hit_ranges(partial_hit_ranges) {}
 
-    // 修改构造函数，删除const，使用移动语义
+    // Constructor using move semantics for better performance
     CacheResult(bool full_hit, bool partial_hit, Range&& full_hit_range,
                 std::vector<Range>&& partial_hit_ranges)
         : full_hit(full_hit), partial_hit(partial_hit),
           full_hit_range(std::move(full_hit_range)), 
           partial_hit_ranges(std::move(partial_hit_ranges)) {}
 
-    // 移动构造函数
+    // Move constructor
     CacheResult(CacheResult&& other) noexcept
         : full_hit(other.full_hit),
           partial_hit(other.partial_hit),
           full_hit_range(std::move(other.full_hit_range)),
           partial_hit_ranges(std::move(other.partial_hit_ranges)) {}
 
-    // 移动赋值运算符
+    // Move assignment operator
     CacheResult& operator=(CacheResult&& other) noexcept {
         if (this != &other) {
             full_hit = other.full_hit;
@@ -39,7 +45,7 @@ public:
         return *this;
     }
 
-    // 禁用拷贝构造和拷贝赋值
+    // Disable copy constructor and copy assignment
     CacheResult(const CacheResult&) = delete;
     CacheResult& operator=(const CacheResult&) = delete;
 
@@ -60,13 +66,21 @@ public:
     LogicallyOrderedRangeCache(int max_size);
     virtual ~LogicallyOrderedRangeCache();
 
-    // insert a key-value range into the cache, update overlapped exsisting ranges
+    /**
+     * Add a new range to the cache, merging with existing overlapping ranges.
+     * The new range's data takes precedence over existing data in overlapping regions.
+     */
     virtual void putRange(Range&& range) = 0;
 
-    // lookup a key-value range in the cache
+    /**
+     * Retrieve a range from the cache between start_key and end_key.
+     * Returns a CacheResult indicating full hit, partial hit, or miss.
+     */
     virtual CacheResult getRange(const std::string& start_key, const std::string& end_key) = 0;
 
-    // victim
+    /**
+     * Remove or truncate entries to maintain cache size within limits.
+     */
     virtual void victim() = 0;
 
     virtual double fullHitRate() const = 0;

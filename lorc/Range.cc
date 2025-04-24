@@ -91,17 +91,17 @@ Range& Range::operator=(const Range& other) {
 
 Range& Range::operator=(Range&& other) noexcept {
     if (this != &other) {
-        // 确保清理当前对象的资源
+        // Clean up current object's resources
         data.reset();
         
-        // 移动资源
+        // Move resources from other
         data = std::move(other.data);
         valid = other.valid;
         size = other.size;
         start_pos = other.start_pos;
         timestamp = other.timestamp;
         
-        // 重置其他对象状态
+        // Reset other object's state
         other.valid = false;
         other.size = 0;
         other.start_pos = 0;
@@ -258,6 +258,7 @@ Range Range::concatRanges(std::vector<Range>& ranges) {
     return Range(std::move(mergedKeys), std::move(mergedValues), mergedKeys.size());
 }
 
+// Function to combine ordered and non-overlapping ranges with move semantics
 Range Range::concatRangesMoved(std::vector<Range>& ranges) {
     if (ranges.empty()) {
         return Range(false);
@@ -272,6 +273,7 @@ Range Range::concatRangesMoved(std::vector<Range>& ranges) {
     new_data->keys.reserve(total_size);
     new_data->values.reserve(total_size);
 
+    // Move data from each range into the new combined range
     for (auto& range : ranges) {
         auto src_data = range.getData(); 
         size_t start = range.getStartPos();
