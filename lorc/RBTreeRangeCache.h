@@ -28,7 +28,7 @@ public:
     void pinRange(std::string startKey);
     
 private:
-    std::set<Range> by_start;     // Container for ranges sorted by start key
-    std::multimap<int, std::string> by_length;  // Container for ranges sorted by length (for victim selection)
+    std::set<Range> orderedRanges;     // Container for ranges sorted by start key
+    std::multimap<int, std::string> lengthMap;  // Container for ranges sorted by length (for victim selection)
     int cache_timestamp;          // Timestamp for LRU-like functionality
 };

@@ -11,8 +11,8 @@ RBTreeRangeCache::RBTreeRangeCache(int max_size)
 }
 
 RBTreeRangeCache::~RBTreeRangeCache() {
-    by_start.clear();
-    by_length.clear();
+    orderedRanges.clear();
+    lengthMap.clear();
 }
 
 void RBTreeRangeCache::putRange(Range&& newRange) {
@@ -27,11 +27,11 @@ void RBTreeRangeCache::putRange(Range&& newRange) {
     std::string newRangeStr = newRange.toString();
 
     // Find the first range that may overlap with newRange
-    auto it = by_start.upper_bound(newRange);
-    if (it != by_start.begin()) {
+    auto it = orderedRanges.upper_bound(newRange);
+    if (it != orderedRanges.begin()) {
         --it;
     }
-    while (it != by_start.end() && it->startKey() <= newRange.endKey()) {
+    while (it != orderedRanges.end() && it->startKey() <= newRange.endKey()) {
         if (it->endKey() < newRange.startKey()) {
             // no overlap
             ++it;
@@ -58,15 +58,15 @@ void RBTreeRangeCache::putRange(Range&& newRange) {
         }
 
         // Remove the old range from both containers
-        auto range = by_length.equal_range(it->getSize());
+        auto range = lengthMap.equal_range(it->getSize());
         for (auto itt = range.first; itt != range.second; ++itt) {
             if (itt->second == it->startKey()) {
-                by_length.erase(itt);
+                lengthMap.erase(itt);
                 break;
             }
         }
         this->current_size -= it->getSize();
-        it = by_start.erase(it);
+        it = orderedRanges.erase(it);
     }
     
     // Concatenate: left ranges + newRange + right ranges
@@ -91,9 +91,9 @@ void RBTreeRangeCache::putRange(Range&& newRange) {
     Range mergedRange = Range::concatRangesMoved(mergedRanges);
     
     // Add the new merged range to both containers
-    by_length.emplace(mergedRange.getSize(), mergedRange.startKey());
+    lengthMap.emplace(mergedRange.getSize(), mergedRange.startKey());
     this->current_size += mergedRange.getSize();
-    by_start.insert(std::move(mergedRange));
+    orderedRanges.insert(std::move(mergedRange));
 
     // Trigger eviction if cache size exceeds limit
     while (this->current_size > this->max_size) {
@@ -103,7 +103,7 @@ void RBTreeRangeCache::putRange(Range&& newRange) {
     // Debug output: print all ranges in order
     Logger::debug("----------------------------------------");
     Logger::debug("All ranges after putRange and victim: " + newRangeStr);
-    for (auto it = by_start.begin(); it != by_start.end(); ++it) {
+    for (auto it = orderedRanges.begin(); it != orderedRanges.end(); ++it) {
         Logger::debug("Range: " + it->toString());
     }
     Logger::debug("Total range size: " + std::to_string(this->current_size));
@@ -128,11 +128,11 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
     std::vector<Range> partial_hit_ranges;
 
     // Find the first range that might overlap with the query
-    auto it = by_start.upper_bound(Range({start_key, start_key}, {}, 1)); // the parameter is a virtual temp range
-    if (it != by_start.begin()) {
+    auto it = orderedRanges.upper_bound(Range({start_key, start_key}, {}, 1)); // the parameter is a virtual temp range
+    if (it != orderedRanges.begin()) {
         --it;
     }
-    if (it != by_start.end()) {
+    if (it != orderedRanges.end()) {
         // Check for full hit: when a single range completely contains the query range
         if (it->startKey() <= start_key && it->endKey() >= end_key) {
             // full hit
@@ -146,7 +146,7 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
             if (it->endKey() < start_key) {
                 ++it; // Check the next range if current one ends too early
             }
-            if (it!= by_start.end() && it->startKey() <= end_key && it->endKey() >= start_key) {
+            if (it!= orderedRanges.end() && it->startKey() <= end_key && it->endKey() >= start_key) {
                 // partial hit
                 do {
                     // dont use subRangeView to preserve underlying data
@@ -154,7 +154,7 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
                         std::max(it->startKey(), start_key),
                         std::min(it->endKey(), end_key))));
                     this->pinRange(it->startKey());
-                } while(++it != by_start.end() && it->startKey() <= end_key && it->endKey() >= start_key);
+                } while(++it != orderedRanges.end() && it->startKey() <= end_key && it->endKey() >= start_key);
             } else {
                 // no hit
                 CacheResult result(false, false, Range(false), {});
@@ -191,34 +191,34 @@ void RBTreeRangeCache::victim() {
     if (this->current_size <= this->max_size) {
         return;
     }
-    auto victimRangeStartKey = by_length.begin()->second;
-    // find the range in by_start and remove it
-    auto it = by_start.find(Range({victimRangeStartKey, victimRangeStartKey}, {}, 1));
-    if (it == by_start.end() || it->startKey() != victimRangeStartKey) {
-        Logger::error("Victim range not found in by_start");
+    auto victimRangeStartKey = lengthMap.begin()->second;
+    // find the range in orderedRanges and remove it
+    auto it = orderedRanges.find(Range({victimRangeStartKey, victimRangeStartKey}, {}, 1));
+    if (it == orderedRanges.end() || it->startKey() != victimRangeStartKey) {
+        Logger::error("Victim range not found in orderedRanges");
         return;
     }
 
     // If multiple ranges exist, remove the victim
     // If only one range remains, truncate it to fit max_size
-    if (by_start.size() > 1 || this->max_size <= 0) {
+    if (orderedRanges.size() > 1 || this->max_size <= 0) {
         Logger::debug("Victim: " + it->toString());
-        this->current_size -= by_length.begin()->first;
-        by_start.erase(it);
-        by_length.erase(by_length.begin());
+        this->current_size -= lengthMap.begin()->first;
+        orderedRanges.erase(it);
+        lengthMap.erase(lengthMap.begin());
     } else {
         // Truncate the last remaining range
         Logger::debug("Truncate: " + it->toString());
-        by_length.erase(by_length.find(it->getSize()));
+        lengthMap.erase(lengthMap.find(it->getSize()));
         it->truncate(this->max_size);
-        by_length.emplace(it->getSize(), it->startKey());
+        lengthMap.emplace(it->getSize(), it->startKey());
         this->current_size = it->getSize();
     }
 }
 
 void RBTreeRangeCache::pinRange(std::string startKey) {
-    auto it = by_start.find(Range({startKey, startKey}, {}, 1));
-    if (it != by_start.end() && it->startKey() == startKey) {
+    auto it = orderedRanges.find(Range({startKey, startKey}, {}, 1));
+    if (it != orderedRanges.end() && it->startKey() == startKey) {
         // update the timestamp
         it->setTimestamp(this->cache_timestamp++);
     }
