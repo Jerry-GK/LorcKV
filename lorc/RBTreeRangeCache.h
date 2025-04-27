@@ -1,11 +1,14 @@
 #pragma once
 
-#include "Range.h"
-#include <vector>
 #include <set>
 #include <map>
+#include <string>
 #include "LogicallyOrderedRangeCache.h"
-#include "Logger.h"
+#include "Range.h"
+#include "logger/Logger.h"
+
+class RBTreeRangeCacheIterator;
+class RangeCacheIterator;
 
 /**
  * RBTreeRangeCache: A cache implementation using Red-Black Tree to store range data
@@ -22,13 +25,16 @@ public:
     double fullHitRate() const override;
     double hitSizeRate() const override;
 
+    RangeCacheIterator* NewRangeCacheIterator() const override;
+
     /**
      * Update the timestamp of a range to mark it as recently used.
      */
     void pinRange(std::string startKey);
     
 private:
+    friend class RBTreeRangeCacheIterator;
     std::set<Range> orderedRanges;     // Container for ranges sorted by start key
     std::multimap<int, std::string> lengthMap;  // Container for ranges sorted by length (for victim selection)
-    int cache_timestamp;          // Timestamp for LRU-like functionality
+    uint64_t cache_timestamp;          // Timestamp for LRU-like functionality
 };

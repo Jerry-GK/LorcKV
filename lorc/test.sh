@@ -12,7 +12,7 @@ if [ "$mode" != "run" ] && [ "$mode" != "debug" ] && [ "$mode" != "profile" ]; t
 fi
 
 # compile 
-g++ -std=c++17 -g -O2 -fno-omit-frame-pointer -rdynamic *.cc -o ./bin/testLORC 
+g++ -std=c++17 -g -O2 -fno-omit-frame-pointer -rdynamic *.cc iterator/*.cc logger/*.cc -o ./bin/testLORC 
 
 # run
 if [ "$mode" == "run" ]; then

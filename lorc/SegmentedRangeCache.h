@@ -2,7 +2,7 @@
 
 #include <vector>
 #include "LogicallyOrderedRangeCache.h"
-#include "Logger.h"
+#include "logger/Logger.h"
 
 class SegmentedRangeCacheEntry;
 

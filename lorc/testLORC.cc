@@ -1,14 +1,13 @@
+#include <iostream>
+#include <unordered_map>
+#include <iomanip>
+#include <fstream>
 #include "LogicallyOrderedRangeCache.h"
 #include "SegmentedRangeCache.h"
 #include "RowRangeCache.h"
 #include "RBTreeRangeCache.h"
 #include "Range.h"
-#include "Logger.h"
-
-#include <iostream>
-#include <unordered_map>
-#include <iomanip>
-#include <fstream>
+#include "logger/Logger.h"
 
 const int num_keys_level = 1000000;
 const int start_key = num_keys_level;

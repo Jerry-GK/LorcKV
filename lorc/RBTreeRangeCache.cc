@@ -1,10 +1,11 @@
-#include "RBTreeRangeCache.h"
 #include <algorithm>
 #include <iostream>
 #include <cassert>
 #include <iomanip>
 #include <algorithm>
 #include <climits>
+#include "RBTreeRangeCache.h"
+#include "iterator/RBTreeRangeCacheIterator.h"
 
 RBTreeRangeCache::RBTreeRangeCache(int max_size)
     : LogicallyOrderedRangeCache(max_size) {
@@ -236,4 +237,8 @@ double RBTreeRangeCache::hitSizeRate() const {
         return 0;
     }
     return (double)hit_size / query_size;
+}
+
+RangeCacheIterator* RBTreeRangeCache::NewRangeCacheIterator() const {
+    return new RBTreeRangeCacheIterator(this);
 }

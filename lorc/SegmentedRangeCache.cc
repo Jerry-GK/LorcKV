@@ -1,8 +1,8 @@
-#include "SegmentedRangeCache.h"
 #include <algorithm>
 #include <iostream>
 #include <cassert>
 #include <iomanip>
+#include "SegmentedRangeCache.h"
 
 SegmentedRangeCache::SegmentedRangeCache(int max_size)
     : LogicallyOrderedRangeCache(max_size) {

@@ -4,8 +4,9 @@
 #include <vector>
 #include <string>
 #include <memory>
-#include "Range.h"
 #include <chrono>
+#include "Range.h"
+#include "iterator/RangeCacheIterator.h"
 
 /**
  * Class that represents the result of a cache lookup operation.
@@ -83,6 +84,8 @@ public:
 };
 
 // This is a cache for ranges. Key-Value Ranges is the smallest unit of data that can be cached.
+class RangeCacheIterator;
+
 class LogicallyOrderedRangeCache {
 public:
     LogicallyOrderedRangeCache(int max_size);
@@ -130,7 +133,14 @@ public:
      */
     CacheStatistic getCacheStatistic() const;
 
+    /**
+     * Get a new range cache iterator.
+     */
+    virtual RangeCacheIterator* NewRangeCacheIterator() const = 0;
+
 protected:
+    friend class RangeCacheIterator;
+
     int max_size;
     int current_size;
     int full_hit_count;
