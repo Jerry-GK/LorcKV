@@ -115,8 +115,8 @@ void SegmentedRangeCache::putRange(Range&& newRange) {
     if (this->enable_statistic) {
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-        this->cache_statistic.putRangeNum++;
-        this->cache_statistic.putRangeTotalTime += duration.count();
+        this->cache_statistic.increasePutRangeNum();
+        this->cache_statistic.increasePutRangeTotalTime(duration.count());
     }
 }
 
@@ -132,10 +132,10 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
     for (size_t i = 0; i < this->entries.size(); i++) {
         if (entries[i].getRange().startKey() <= start_key && entries[i].getRange().endKey() >= end_key) {
             // full hit
-            full_hit_count++;
+            increaseFullHitCount();
             this->pinRange(i);
             Range fullHitRange = entries[i].getRange().subRange(start_key, end_key);
-            hit_size += fullHitRange.getSize();
+            increaseHitSize(fullHitRange.getSize());
             result = CacheResult(true, false, std::move(fullHitRange), {});
             break;
         } else if (entries[i].getRange().startKey() <= end_key && entries[i].getRange().endKey() >= start_key) {
@@ -147,13 +147,13 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
         }
     }
 
-    full_query_count++;
-    query_size += std::stoi(end_key) - std::stoi(start_key) + 1;    // TODO(jr): delete this code
+    increaseFullQueryCount();
+    increaseQuerySize(std::stoi(end_key) - std::stoi(start_key) + 1);    // TODO(jr): delete this code
 
     if (!result.isFullHit() && !partial_hit_ranges.empty()) {
         // partial hit
         for (const auto& range : partial_hit_ranges) {
-            hit_size += range.getSize();
+            increaseHitSize(range.getSize());
         }
         result = CacheResult(false, true, Range(false), std::move(partial_hit_ranges));
     } 
@@ -161,8 +161,8 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
     if (this->enable_statistic) {
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-        this->cache_statistic.getRangeNum++;
-        this->cache_statistic.getRangeTotalTime += duration.count();
+        this->cache_statistic.increaseGetRangeNum();
+        this->cache_statistic.increaseGetRangeTotalTime(duration.count());
     }
 
     return result;
@@ -274,18 +274,4 @@ void SegmentedRangeCache::victim() {
 void SegmentedRangeCache::pinRange(int index) {
     assert(index >= 0 && index < entries.size());
     entries[index].timestamp = this->cache_timestamp++;
-}
-
-double SegmentedRangeCache::fullHitRate() const {
-    if (full_query_count == 0) {
-        return 0;
-    }
-    return (double)full_hit_count / full_query_count;
-}
-
-double SegmentedRangeCache::hitSizeRate() const {
-    if (query_size == 0) {
-        return 0;
-    }
-    return (double)hit_size / query_size;
 }

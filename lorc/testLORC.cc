@@ -6,8 +6,13 @@
 #include "SegmentedRangeCache.h"
 #include "RowRangeCache.h"
 #include "RBTreeRangeCache.h"
+#include "iterator/RangeCacheIterator.h"
 #include "Range.h"
 #include "logger/Logger.h"
+#include "storage/KVMap.h"
+#include "storage/KVMapIterator.h"
+#include <cassert>
+#include <chrono>
 
 const int num_keys_level = 1000000;
 const int start_key = num_keys_level;
@@ -21,8 +26,8 @@ const int num_queries = 500;
 
 const bool enable_logger = true;
 const double update_ratio = 0.2;
-const bool do_validation = true;
-const bool do_update = true;
+const bool do_validation = false;
+const bool do_update = false;
 
 std::string genValueStr(std::string key) {
     std::string value_postfix = "value@" + key + "@" + std::to_string(rand() % 100);
@@ -36,6 +41,101 @@ std::string genValueStr(std::string key) {
     return value;
 }
 
+void executeRangeQuery(KVMap* kv_map, LogicallyOrderedRangeCache* lorc, const std::string& start_key, int range_len) {    
+    Logger::info("Executing range query: < StartKey = " + start_key + ", len = " + std::to_string(range_len) + ", EndKey = " \
+        + std::to_string((std::stoi(start_key) + range_len - 1)) + " >");
+    std::vector<std::string> keys, values;
+    keys.reserve(range_len);
+    values.reserve(range_len);
+
+    int len = 0;
+    RangeCacheIterator* rc_it = lorc->newRangeCacheIterator();
+    rc_it->Seek(start_key);
+    KVMapIterator* kv_it = kv_map->newKVMapIterator(); // invalid at first
+    if (!(rc_it->Valid() && rc_it->key() == start_key)) {   // avoid unnecessary kv seek
+        kv_it->Seek(start_key);
+    }
+
+    bool full_hit = true;
+    bool partial_hit = false;
+    std::string last_read_rc_key = start_key;
+    long long get_range_total_time = 0;
+    while (len < range_len) {
+        if (rc_it->Valid() && (!kv_it->Valid() || rc_it->key() <= kv_it->key())) {
+            int hit_len = 0;
+            auto start_time = std::chrono::high_resolution_clock::now();
+            while (rc_it->Valid() && len < range_len) {
+                bool is_last_range_key = !rc_it->HasNextInRange();
+                if (is_last_range_key) {
+                    last_read_rc_key = rc_it->key();
+                }
+                keys.emplace_back(rc_it->key());
+                values.emplace_back(rc_it->value());
+                partial_hit = true;
+                len++;
+                hit_len++;
+                rc_it->Next();
+                if (is_last_range_key) {
+                    break;
+                }
+            }
+            auto end_time = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+            if (hit_len > 0) {
+                get_range_total_time += duration;
+            }   
+            lorc->increaseHitSize(hit_len);
+            if (len < range_len) {
+                kv_it->Seek(last_read_rc_key);
+                if (kv_it->Valid() && kv_it->key() == last_read_rc_key) {
+                    kv_it->Next(); // skip the last key read in range cache
+                }
+            }
+        } else if (rc_it->Valid() && (kv_it->Valid() && rc_it->key() > kv_it->key())) {
+            keys.emplace_back(kv_it->key());
+            values.emplace_back(kv_it->value());
+            len++;
+            full_hit = false;
+            kv_it->Next();
+        } else if (!rc_it->Valid()) {
+            if (kv_it->Valid()) {
+                keys.emplace_back(kv_it->key());
+                values.emplace_back(kv_it->value());
+                len++;
+                full_hit = false;
+                kv_it->Next();
+            } else {
+                break;
+            }
+        }
+    }
+    
+    assert(keys.size() == values.size() && keys.size() == range_len && range_len == len);
+    if (do_validation) {
+        bool validation_success = kv_map->Validate(keys, values);
+        if (!validation_success) {
+            Logger::error("Validation failed for range: < StartKey = " + start_key + ", len = " + std::to_string(range_len) + ", EndKey = " \
+                + std::to_string((std::stoi(start_key) + range_len - 1)) + " >");
+        }
+    }   
+
+    if (!full_hit) {
+        lorc->putRange(Range(std::move(keys), std::move(values), range_len)); 
+    } else {
+        lorc->increaseFullHitCount();
+    }
+    lorc->increaseFullQueryCount();
+    lorc->increaseQuerySize(range_len);
+
+    if (partial_hit) {
+        lorc->getCacheStatistic().increaseGetRangeNum();
+        lorc->getCacheStatistic().increaseGetRangeTotalTime(get_range_total_time);
+    }
+
+    delete rc_it;
+    delete kv_it;
+}
+
 int main() {
     Logger::setEnabled(enable_logger);
     Logger::setLevel(Logger::DEBUG); 
@@ -46,157 +146,48 @@ int main() {
     LogicallyOrderedRangeCache* lorc = new RBTreeRangeCache(cache_size);
     lorc->setEnableStatistic(true);
 
-    std::unordered_map<std::string, std::string> standard_kv;
+    KVMap* kv_map = new KVMap();
     
     std::vector<double> hitrates;
     hitrates.reserve(num_queries);
 
     // init standard_kv
     for (int i = start_key; i <=end_key; i++) {
-        standard_kv[std::to_string(i)] = genValueStr(std::to_string(i));
+        kv_map->Put(std::to_string(i), genValueStr(std::to_string(i)));
     }
 
-    Logger::info("Standard cache initialized! Start testing LORC...");
+    Logger::info("Standard KV map initialized! Start testing LORC...");
+    long long total_query_time = 0;
+    
     // randomly generate num_queries queries
-    bool validationSuccess = true;
-    for (int i = 0; i < num_queries; i++) {
+    for (int i = 1; i <= num_queries; i++) {
         Logger::info("Query " + std::to_string(i) + " / " + std::to_string(num_queries) + " (" + std::to_string((double)i / num_queries * 100) + "%)");
         
         int range_len = rand() % (max_range_len - min_range_len + 1) + min_range_len;
         int start = rand() % (end_key - start_key - range_len) + start_key;
         int end = start + range_len - 1;
 
-        const CacheResult& result = lorc->getRange(std::to_string(start), std::to_string(end));
-        if (result.isFullHit()) {
-            // full hit
-            if (do_validation) {
-                // cache hit
-                const Range& full_hit_range = result.getFullHitRange(); // auto moved
-                std::vector<std::string>& keys = full_hit_range.getKeys();
-                std::vector<std::string>& values = full_hit_range.getValues();
-    
-                for (int j = 0; j < keys.size(); j++) {
-                    std::string key = keys[j];
-                    std::string value = values[j];
-                    if (standard_kv.find(key) == standard_kv.end()) {
-                        Logger::error("Key not found in standard cache: " + key);
-                        validationSuccess = false;
-                        break;
-                    } else if (standard_kv[key] != value) {
-                        Logger::error("Value mismatch for key " + key + ": expected " + standard_kv[key] + ", got " + value);
-                        validationSuccess = false;
-                        break;
-                    }
-                }
-                if (!validationSuccess) {
-                    break;
-                }
-            }
-        } else if (result.isPartialHit()) {
-            // partial hit
-            const std::vector<Range>& partial_hit_ranges = result.getPartialHitRanges();
-            for (size_t j = 0; j < partial_hit_ranges.size(); j++) {
-                std::vector<std::string>& keys = partial_hit_ranges[j].getKeys();
-                std::vector<std::string>& values = partial_hit_ranges[j].getValues();
-
-                if (do_validation) {
-                    for (int k = 0; k < keys.size(); k++) {
-                        std::string key = keys[k];
-                        std::string value = values[k];
-                        if (standard_kv.find(key) == standard_kv.end()) {
-                            Logger::error("Key not found in standard cache: " + key);
-                            validationSuccess = false;
-                            break;
-                        } else if (standard_kv[key] != value) {
-                            Logger::error("Value mismatch for key " + key + ": expected " + standard_kv[key] + ", got " + value);
-                            validationSuccess = false;
-                            break;
-                        }
-                    }
-                    if (!validationSuccess) {
-                        break;
-                    }
-                }                
-            }
-            // get the remaining data from standard_kv and putRange
-            std::vector<std::string> keys;
-            std::vector<std::string> values;
-            int cur = start, curPartialRangeIndex = 0;
-            while (cur <= end) {
-                std::string curKey = std::to_string(cur);
-                if (curKey >= partial_hit_ranges[curPartialRangeIndex].startKey() && curKey <= partial_hit_ranges[curPartialRangeIndex].endKey()) {
-                    // this key is in the partial hit range
-                    keys.emplace_back(curKey);
-                    values.emplace_back(std::move(partial_hit_ranges[curPartialRangeIndex].valueAt(cur - std::stoi(partial_hit_ranges[curPartialRangeIndex].startKey()))));
-                } else {
-                    // this key is not in the partial hit range
-                    keys.emplace_back(curKey);
-                    values.emplace_back(standard_kv[curKey]);   // query from standard cache
-                    if (curPartialRangeIndex < partial_hit_ranges.size() - 1) {
-                        curPartialRangeIndex++;
-                    }
-                }
-                cur++;
-            }
-            lorc->putRange(Range(std::move(keys), std::move(values), end - start + 1));
-        } else {
-            // no hit
-            std::vector<std::string> keys;
-            std::vector<std::string> values;
-            for (int j = start; j <= end; j++) {
-                std::string key = std::to_string(j);
-                // update_ratio for standard_kv has been updated
-                if (do_update && rand() % 100 < update_ratio * 100) {
-                    standard_kv[key] = genValueStr(key);
-                }
-                keys.emplace_back(key);
-                values.emplace_back(standard_kv[key]);
-            }
-            lorc->putRange(Range(std::move(keys), std::move(values), end - start + 1)); 
-        }
+        auto start_time = std::chrono::high_resolution_clock::now();
+        executeRangeQuery(kv_map, lorc, std::to_string(start), range_len);
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+        total_query_time += duration;
 
         Logger::info("Current full hit rate: " + std::to_string(lorc->fullHitRate() * 100) + "%");
         Logger::info("Current hit size rate: " + std::to_string(lorc->hitSizeRate() * 100) + "%");
         hitrates.emplace_back(lorc->fullHitRate());
     }
 
-    if (validationSuccess) {
-        Logger::info("Validation successful!");
-    } else {
-        Logger::error("Validation failed!");
-    }
-
-    // Print the hit rate precent, 3 digits after the decimal point
-    // std::cout << "Hit rate: " << std::fixed << std::setprecision(3) << lorc->hitRate() * 100 << "%" << std::endl;   
-
-    // // caclate estimated coverage
-    // double selectivity = ((min_range_len + max_range_len) / (double)(end_key - start_key + 1)) / 2;
-    // double cover = 1.0;
-    // for (int i = 0; i < num_queries; i++) {
-    //     cover = cover * (1 - selectivity);
-    // }
-    // cover = 1 - cover;
-    // std::cout << "Estimated coverage: " << std::fixed << std::setprecision(3) << cover * 100 << "%" << std::endl;
-
-    // output hitrates to hitrates.csv
-    // std::ofstream hitrate_file("output/hitrates.csv");
-    // if (hitrate_file.is_open()) {
-    //     for (size_t i = 0; i < hitrates.size(); i++) {
-    //         hitrate_file << i + 1 << ", " << hitrates[i] << std::endl;
-    //     }
-    //     hitrate_file.close();
-    // } else {
-    //     Logger::error("Unable to open file");
-    // }
-
     // output cache statistic
     if (lorc->enableStatistic()) {
-        std::cout << "Cache Statistic:" << std::endl;
-        std::cout << "Put Range Num: " << lorc->getCacheStatistic().putRangeNum << std::endl;
-        std::cout << "Get Range Num: " << lorc->getCacheStatistic().getRangeNum << std::endl;
-        std::cout << "Avg Put Range Time: " << lorc->getCacheStatistic().getAvgPutRangeTime() << " us" << std::endl;
-        std::cout << "Avg Get Range Time: " << lorc->getCacheStatistic().getAvgGetRangeTime() << " us" << std::endl;
+        Logger::info("Cache Statistic:");
+        Logger::info("Put Range Num: " + std::to_string(lorc->getCacheStatistic().getPutRangeNum()));
+        Logger::info("Get Range Num: " + std::to_string(lorc->getCacheStatistic().getGetRangeNum()));
+        Logger::info("Avg Put Range Time: " + std::to_string(lorc->getCacheStatistic().getAvgPutRangeTime()) + " us");
+        Logger::info("Avg Get Range Time: " + std::to_string(lorc->getCacheStatistic().getAvgGetRangeTime()) + " us");
     }
+    
+    Logger::info("Average Query Time: " + std::to_string(total_query_time / num_queries) + " us");
 
     delete lorc;
 

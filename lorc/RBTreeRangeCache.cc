@@ -103,7 +103,7 @@ void RBTreeRangeCache::putRange(Range&& newRange) {
 
     // Debug output: print all ranges in order
     Logger::debug("----------------------------------------");
-    Logger::debug("All ranges after putRange and victim: " + newRangeStr);
+    Logger::debug("All ranges after putRange: " + newRangeStr);
     for (auto it = orderedRanges.begin(); it != orderedRanges.end(); ++it) {
         Logger::debug("Range: " + it->toString());
     }
@@ -113,8 +113,8 @@ void RBTreeRangeCache::putRange(Range&& newRange) {
     if (this->enable_statistic) {
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-        this->cache_statistic.putRangeNum++;
-        this->cache_statistic.putRangeTotalTime += duration.count();
+        this->cache_statistic.increasePutRangeNum();
+        this->cache_statistic.increasePutRangeTotalTime(duration.count());
     }
 }
 
@@ -137,10 +137,10 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
         // Check for full hit: when a single range completely contains the query range
         if (it->startKey() <= start_key && it->endKey() >= end_key) {
             // full hit
-            full_hit_count++;
+            increaseFullHitCount();
             this->pinRange(it->startKey());
             Range fullHitRange = it->subRange(start_key, end_key); // dont use subRangeView to preserve underlying data
-            hit_size += fullHitRange.getSize();
+            increaseHitSize(fullHitRange.getSize());
             result = CacheResult(true, false, std::move(fullHitRange), {});
         } else {
             // Check for partial hits: when one or more ranges partially overlap with query
@@ -164,14 +164,14 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
     }
 
     // Update statistics
-    full_query_count++;
-    query_size += std::stoi(end_key) - std::stoi(start_key) + 1;
+    increaseFullQueryCount();
+    increaseQuerySize(std::stoi(end_key) - std::stoi(start_key) + 1);
 
     // Handle partial hits
     if (!result.isFullHit() && !partial_hit_ranges.empty()) {
         // partial hit
         for (const auto& range : partial_hit_ranges) {
-            hit_size += range.getSize();
+            increaseHitSize(range.getSize());
         }
         // 使用std::move移动整个vector
         result = CacheResult(false, true, Range(false), std::move(partial_hit_ranges));
@@ -180,8 +180,8 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
     if (this->enable_statistic) {
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-        this->cache_statistic.getRangeNum++;
-        this->cache_statistic.getRangeTotalTime += duration.count();
+        this->cache_statistic.increaseGetRangeNum();
+        this->cache_statistic.increaseGetRangeTotalTime(duration.count());
     }
     
     return result;
@@ -225,20 +225,6 @@ void RBTreeRangeCache::pinRange(std::string startKey) {
     }
 }
 
-double RBTreeRangeCache::fullHitRate() const {
-    if (full_query_count == 0) {
-        return 0;
-    }
-    return (double)full_hit_count / full_query_count;
-}
-
-double RBTreeRangeCache::hitSizeRate() const {
-    if (query_size == 0) {
-        return 0;
-    }
-    return (double)hit_size / query_size;
-}
-
-RangeCacheIterator* RBTreeRangeCache::NewRangeCacheIterator() const {
+RangeCacheIterator* RBTreeRangeCache::newRangeCacheIterator() const {
     return new RBTreeRangeCacheIterator(this);
 }

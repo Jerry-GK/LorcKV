@@ -11,22 +11,23 @@ class RBTreeRangeCacheIterator : public RangeCacheIterator {
 public:
     explicit RBTreeRangeCacheIterator(const RBTreeRangeCache* cache);
     
+    ~RBTreeRangeCacheIterator() override;
     bool Valid() const override;
+    bool HasNextInRange() const override;
     void SeekToFirst() override;
     void SeekToLast() override;
     void Seek(const std::string& target) override;
     void SeekForPrev(const std::string& target) override;
     void Next() override;
     void Prev() override;
-    std::string key() const override;
-    std::string value() const override;
+    const std::string& key() const override;
+    const std::string& value() const override;
     std::string status() const override;
 
 private:
     const RBTreeRangeCache* cache;
-    std::set<Range>::iterator current;
-    std::set<Range>::iterator current_range;
+    std::set<Range>::const_iterator current_range;
     int current_index;
-    std::string error_status;
+    std::string status_str;
     bool valid;
 };

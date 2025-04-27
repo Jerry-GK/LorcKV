@@ -41,8 +41,8 @@ void RowRangeCache::putRange(Range&& newRange) {
     if (this->enable_statistic) {
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-        this->cache_statistic.putRangeNum++;
-        this->cache_statistic.putRangeTotalTime += duration.count();
+        this->cache_statistic.increasePutRangeNum();
+        this->cache_statistic.increasePutRangeTotalTime(duration.count());
     }
 }
 
@@ -73,22 +73,22 @@ CacheResult RowRangeCache::getRange(const std::string& start_key, const std::str
     Range full_hit_range(std::move(keys), std::move(values), keys.size());
 
     if(hit) {
-        full_hit_count++;
-        hit_size += full_hit_range.getSize();
+        increaseFullHitCount();
+        increaseHitSize(full_hit_range.getSize());
         result = CacheResult(true, false, std::move(full_hit_range), {});
     }
 
     // Update statistics
-    full_query_count++;
-    query_size += std::stoi(end_key) - std::stoi(start_key) + 1;
+    increaseFullQueryCount();
+    increaseQuerySize(std::stoi(end_key) - std::stoi(start_key) + 1);
 
     // no partial hit for RowRangeCache
 
     if (this->enable_statistic) {
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-        this->cache_statistic.getRangeNum++;
-        this->cache_statistic.getRangeTotalTime += duration.count();
+        this->cache_statistic.increaseGetRangeNum();
+        this->cache_statistic.increaseGetRangeTotalTime(duration.count());
     }
 
     return result;
@@ -108,18 +108,4 @@ void RowRangeCache::victim() {
         victim_size--;
     }
     this->current_size = row_map.size();
-}
-
-double RowRangeCache::fullHitRate() const {
-    if (full_query_count == 0) {
-        return 0;
-    }
-    return (double)full_hit_count / full_query_count;
-}
-
-double RowRangeCache::hitSizeRate() const {
-    if (query_size == 0) {
-        return 0;
-    }
-    return (double)hit_size / query_size;
 }

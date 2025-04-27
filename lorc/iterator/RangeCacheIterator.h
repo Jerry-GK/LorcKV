@@ -7,17 +7,20 @@ class LogicallyOrderedRangeCache;
 
 class RangeCacheIterator {
 public:
-    RangeCacheIterator() {}
+    RangeCacheIterator() = default;
     // No copying allowed
     RangeCacheIterator(const RangeCacheIterator&) = delete;
     void operator=(const RangeCacheIterator&) = delete;
 
-    virtual ~RangeCacheIterator() {}
+    virtual ~RangeCacheIterator() = default;
 
     // An RangeCacheIterator is either positioned at a key/value pair, or
     // not valid.  This method returns true iff the RangeCacheIterator is valid.
     // Always returns false if !status().ok().
     virtual bool Valid() const = 0;
+
+    // Returns true if the RangeCacheIterator has more keys in the range
+    virtual bool HasNextInRange() const = 0;
 
     // Position at the first key in the source.  The RangeCacheIterator is Valid()
     // after this call iff the source is not empty.
@@ -58,13 +61,13 @@ public:
     // the returned slice is valid only until the next modification of
     // the RangeCacheIterator.
     // REQUIRES: Valid()
-    virtual std::string key() const = 0;
+    virtual const std::string& key() const = 0;
 
     // Return the value for the current entry.  The underlying storage for
     // the returned slice is valid only until the next modification of
     // the RangeCacheIterator.
     // REQUIRES: Valid()
-    virtual std::string value() const = 0;
+    virtual const std::string& value() const = 0;
 
     // If an error has occurred, return it.  Else return an ok status.
     // If non-blocking IO is requested and this operation cannot be

@@ -3,7 +3,7 @@
 #include <set>
 #include <map>
 #include <string>
-#include "LogicallyOrderedRangeCache.h"
+#include "LogicallyOrderedRangeCache.h" // Ensure this header provides the full definition of LogicallyOrderedRangeCache
 #include "Range.h"
 #include "logger/Logger.h"
 
@@ -22,10 +22,8 @@ public:
     void putRange(Range&& range) override;
     CacheResult getRange(const std::string& start_key, const std::string& end_key) override;
     void victim() override;
-    double fullHitRate() const override;
-    double hitSizeRate() const override;
-
-    RangeCacheIterator* NewRangeCacheIterator() const override;
+    
+    RangeCacheIterator* newRangeCacheIterator() const override;
 
     /**
      * Update the timestamp of a range to mark it as recently used.

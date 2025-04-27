@@ -20,8 +20,6 @@ public:
     // TODO(jr): RowRangeCache::gerRange is not clear and should be deperecated
     CacheResult getRange(const std::string& start_key, const std::string& end_key) override;
     void victim() override;
-    double fullHitRate() const override;
-    double hitSizeRate() const override;
     
 private:
     std::map<std::string, std::string> row_map;

@@ -16,6 +16,37 @@ void LogicallyOrderedRangeCache::setEnableStatistic(bool enable_statistic) {
     this->enable_statistic = enable_statistic;
 }
 
-CacheStatistic LogicallyOrderedRangeCache::getCacheStatistic() const {
+CacheStatistic& LogicallyOrderedRangeCache::getCacheStatistic() {
     return cache_statistic;
+}
+
+void LogicallyOrderedRangeCache::increaseFullHitCount() {
+    full_hit_count++;
+}
+
+void LogicallyOrderedRangeCache::increaseFullQueryCount() {
+    full_query_count++;
+}
+
+void LogicallyOrderedRangeCache::increaseHitSize(int size) {
+    hit_size += size;
+}
+
+void LogicallyOrderedRangeCache::increaseQuerySize(int size) {
+    query_size += size;
+}
+
+
+double LogicallyOrderedRangeCache::fullHitRate() const {
+    if (full_query_count == 0) {
+        return 0;
+    }
+    return (double)full_hit_count / full_query_count;
+}
+
+double LogicallyOrderedRangeCache::hitSizeRate() const {
+    if (query_size == 0) {
+        return 0;
+    }
+    return (double)hit_size / query_size;
 }

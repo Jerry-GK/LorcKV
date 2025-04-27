@@ -21,9 +21,6 @@ public:
 
     void victim() override;
 
-    double fullHitRate() const override;
-    double hitSizeRate() const override;
-
     /**
      * Update the timestamp of a range to mark it as recently used.
      */
