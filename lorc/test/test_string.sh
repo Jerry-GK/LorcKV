@@ -12,8 +12,7 @@ if [ "$mode" != "run" ] && [ "$mode" != "debug" ] && [ "$mode" != "profile" ]; t
 fi
 
 # compile 
-make -j$(nproc)
-make cleanObjects
+g++ -std=c++17 -g -O2 -fno-omit-frame-pointer -rdynamic test_string.cc -o ./bin/testString
 
 # run
 if [ "$mode" == "run" ]; then
@@ -22,20 +21,20 @@ fi
 
 # debug
 if [ "$mode" == "debug" ]; then
-    gdb ./bin/testLORC
+    gdb ./bin/testString
 fi
 
 # profile
 if [ "$mode" == "profile" ]; then
     echo "Profiling..."
-    perf record -F 99 --call-graph dwarf -g -o ./profile/profile.data ./bin/testLORC
+    perf record -F 99 --call-graph dwarf -g -o ./profile/profile_Str.data ./bin/testString
 
     # 生成火焰图（需提前安装FlameGraph工具）
-    perf script -i ./profile/profile.data | \
+    perf script -i ./profile/profile_Str.data | \
     stackcollapse-perf.pl | \
-    flamegraph.pl > ./profile/lorc_flamegraph.svg
-    rm profile/profile.data
+    flamegraph.pl > ./profile/test_string.svg
+    rm profile/profile_Str.data
 fi
 
 # clean
-make cleanTarget
+rm bin/testString

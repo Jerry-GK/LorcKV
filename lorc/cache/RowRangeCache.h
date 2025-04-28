@@ -1,11 +1,11 @@
 #pragma once
 
-#include "Range.h"
 #include <vector>
 #include <set>
 #include <map>
 #include "LogicallyOrderedRangeCache.h"
-#include "logger/Logger.h"
+#include "../range/Range.h"
+#include "../logger/Logger.h"
 
 /**
  * RowRangeCache: A cache implementation using a map to store range data

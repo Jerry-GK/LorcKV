@@ -2,11 +2,11 @@
 // #include <unordered_map>
 // #include <iomanip>
 // #include <fstream>
-// #include "LogicallyOrderedRangeCache.h"
-// #include "SegmentedRangeCache.h"
-// #include "RowRangeCache.h"
-// #include "RBTreeRangeCache.h"
-// #include "Range.h"
+// #include "cache/LogicallyOrderedRangeCache.h"
+// #include "cache/SegmentedRangeCache.h"
+// #include "cache/RowRangeCache.h"
+// #include "cache/RBTreeRangeCache.h"
+// #include "range/Range.h"
 // #include "logger/Logger.h"
 
 // const int num_keys_level = 1000000;

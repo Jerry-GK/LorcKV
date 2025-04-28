@@ -2,19 +2,20 @@
 #include <unordered_map>
 #include <iomanip>
 #include <fstream>
-#include "LogicallyOrderedRangeCache.h"
-#include "SegmentedRangeCache.h"
-#include "RowRangeCache.h"
-#include "RBTreeRangeCache.h"
-#include "iterator/RangeCacheIterator.h"
-#include "Range.h"
-#include "logger/Logger.h"
-#include "storage/KVMap.h"
-#include "storage/KVMapIterator.h"
 #include <cassert>
 #include <chrono>
 
-const int num_keys_level = 1000000;
+#include "cache/LogicallyOrderedRangeCache.h"
+#include "cache/SegmentedRangeCache.h"
+#include "cache/RowRangeCache.h"
+#include "cache/RBTreeRangeCache.h"
+#include "iterator/RangeCacheIterator.h"
+#include "range/Range.h"
+#include "logger/Logger.h"
+#include "storage/KVMap.h"
+#include "storage/KVMapIterator.h"
+
+const int num_keys_level = 100000;
 const int start_key = num_keys_level;
 const int end_key = 10 * num_keys_level - 1;
 const int value_size = 4096;
@@ -22,7 +23,7 @@ const double cache_size_ratio = 0.25;
 
 const int min_range_len = 1;
 const int max_range_len = num_keys_level * 10 * 0.01;
-const int num_queries = 500;
+const int num_queries = 5000;
 
 const bool enable_logger = true;
 const double update_ratio = 0.2;

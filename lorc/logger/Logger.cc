@@ -1,7 +1,7 @@
-#include "Logger.h"
 #include <iostream>
 #include <ctime>
 #include <iomanip>
+#include "Logger.h"
 
 Logger::Level Logger::currentLevel = Logger::DEBUG;
 bool Logger::enabled = true;

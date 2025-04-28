@@ -1,6 +1,6 @@
 #include "RBTreeRangeCacheIterator.h"
-#include "../RBTreeRangeCache.h"
-#include "../Range.h"
+#include "../cache/RBTreeRangeCache.h"
+#include "../range/Range.h"
 
 RBTreeRangeCacheIterator::~RBTreeRangeCacheIterator() {
     

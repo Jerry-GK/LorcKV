@@ -1,7 +1,7 @@
 #pragma once
 
 #include <string>
-#include "../Range.h"
+#include "../range/Range.h"
 
 class LogicallyOrderedRangeCache;
 

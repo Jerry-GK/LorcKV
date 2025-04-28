@@ -5,8 +5,8 @@
 #include <string>
 #include <memory>
 #include <chrono>
-#include "Range.h"
-#include "iterator/RangeCacheIterator.h"
+#include "../range/Range.h"
+#include "../iterator/RangeCacheIterator.h"
 
 /**
  * Class that represents the result of a cache lookup operation.

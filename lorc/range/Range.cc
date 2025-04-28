@@ -2,7 +2,7 @@
 #include <cassert>
 #include <algorithm> 
 #include "Range.h"
-#include "logger/Logger.h"
+#include "../logger/Logger.h"
 
 Range::Range(bool valid) {
     this->valid = valid;

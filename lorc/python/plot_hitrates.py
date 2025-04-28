@@ -10,11 +10,11 @@ def plot_csv_files():
     plt.figure(figsize=(12, 6))
     
     # Read and plot each CSV file
-    csv_files = ['./output/hitrates_victim_oldest.csv', 
-                 './output/hitrates_victim_random.csv', 
-                 './output/hitrates_victim_shortest.csv',
-                 './output/hitrates_victim_longest.csv',
-                 './output/hitrates_victim_lru.csv']
+    csv_files = ['../output/hitrates_victim_oldest.csv', 
+                 '../output/hitrates_victim_random.csv', 
+                 '../output/hitrates_victim_shortest.csv',
+                 '../output/hitrates_victim_longest.csv',
+                 '../output/hitrates_victim_lru.csv']
     labels = ['Victim Oldest', 'Victim Random', 'Victim Shortest', 'Victim Longest', 'Victim LRU']
     colors = ['red', 'blue', 'green', 'purple', 'orange']
     
@@ -45,8 +45,8 @@ def plot_csv_files():
     plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: '{:.0f}%'.format(y)))
 
     # Save chart
-    plt.savefig('./output/cache_comparison.png', dpi=300, bbox_inches='tight')
-    print("Chart saved to ./output/cache_comparison.png")
+    plt.savefig('../output/cache_comparison.png', dpi=300, bbox_inches='tight')
+    print("Chart saved to ../output/cache_comparison.png")
 
 if __name__ == "__main__":
     plot_csv_files()

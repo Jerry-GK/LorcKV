@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <climits>
 #include "RBTreeRangeCache.h"
-#include "iterator/RBTreeRangeCacheIterator.h"
+#include "../iterator/RBTreeRangeCacheIterator.h"
 
 RBTreeRangeCache::RBTreeRangeCache(int max_size)
     : LogicallyOrderedRangeCache(max_size) {

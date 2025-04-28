@@ -4,8 +4,8 @@
 #include <map>
 #include <string>
 #include "LogicallyOrderedRangeCache.h" // Ensure this header provides the full definition of LogicallyOrderedRangeCache
-#include "Range.h"
-#include "logger/Logger.h"
+#include "../range/Range.h"
+#include "../logger/Logger.h"
 
 class RBTreeRangeCacheIterator;
 class RangeCacheIterator;

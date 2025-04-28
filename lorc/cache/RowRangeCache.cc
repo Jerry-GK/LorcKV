@@ -1,10 +1,10 @@
-#include "RowRangeCache.h"
 #include <algorithm>
 #include <iostream>
 #include <cassert>
 #include <iomanip>
 #include <algorithm>
 #include <climits>
+#include "RowRangeCache.h"
 
 RowRangeCache::RowRangeCache(int max_size)
     : LogicallyOrderedRangeCache(max_size) {
