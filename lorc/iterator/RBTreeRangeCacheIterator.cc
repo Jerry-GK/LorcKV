@@ -58,7 +58,7 @@ void RBTreeRangeCacheIterator::Seek(const std::string& target) {
         valid = false;
         return;
     }
-    Range temp_range({target, target}, {}, 1);
+    Range temp_range({target}, {""}, 1);
     current_range = cache->orderedRanges.upper_bound(temp_range); // startKey > target
     if (current_range != cache->orderedRanges.begin()) {
         --current_range;
@@ -88,7 +88,7 @@ void RBTreeRangeCacheIterator::SeekForPrev(const std::string& target) {
         valid = false;
         return;
     }
-    Range temp_range({target, target}, {}, 1);
+    Range temp_range({target}, {""}, 1);
     current_range = cache->orderedRanges.upper_bound(temp_range);
     if (current_range != cache->orderedRanges.begin()) {
         --current_range;

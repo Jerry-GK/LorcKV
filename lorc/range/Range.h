@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include "../logger/Logger.h"
 
 /**
  * @brief Range class represents a sorted key-value range in memory
@@ -11,20 +12,33 @@
  */
 class Range {
 private:
-    struct RangeData {
-        std::vector<std::string> keys;
-        std::vector<std::string> values;
+    struct StringView {
+        size_t offset;
+        size_t length;
     };
+
+    struct RangeData {
+        char* keys_buffer;         // keys的连续存储区
+        char* values_buffer;       // values的连续存储区
+        size_t keys_buffer_size;   // keys buffer总大小
+        size_t values_buffer_size; // values buffer总大小
+        StringView* key_views;     // 存储每个key的位置和长度
+        StringView* value_views;   // 存储每个value的位置和长度
+    };
+    
     std::shared_ptr<RangeData> data;
-    mutable size_t size;
+    mutable size_t size;          // key-value对的数量
     mutable bool valid;
     mutable int timestamp;
-
-    // Start position for subrange operations (default -1). If >= 0, indicates this is a subrange view, and only used in concatRangesMoved
     int subrange_view_start_pos;  
 
+    // 新增辅助函数
+    std::string getStringFromView(const char* buffer, const StringView& view) const;
+    void initRangeData(const std::vector<std::string>& keys, 
+                      const std::vector<std::string>& values,
+                      size_t count);
+
 private:
-    // construct by data pointer and subrange_view_start_pos, it's a subrange view if subrange_view_start_pos >= 0
     Range(std::shared_ptr<RangeData> data, int subrange_view_start_pos, size_t size);
 
 public:
@@ -78,6 +92,8 @@ public:
 
     // Define comparison operator, sort by startKey in ascending order
     bool operator<(const Range& other) const {
+        bool res = startKey() < other.startKey();
+        Logger::debug("Compare result: " + this->toString() + " < " + other.toString() + ", res = " + std::to_string(res));
         return startKey() < other.startKey();
     }
 };

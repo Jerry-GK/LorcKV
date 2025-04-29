@@ -94,7 +94,8 @@ void RBTreeRangeCache::putRange(Range&& newRange) {
     // Add the new merged range to both containers
     lengthMap.emplace(mergedRange.getSize(), mergedRange.startKey());
     this->current_size += mergedRange.getSize();
-    orderedRanges.insert(std::move(mergedRange));
+    orderedRanges.emplace(std::move(mergedRange));
+    // assert(res.second); // Ensure insertion was successful
 
     // Trigger eviction if cache size exceeds limit
     while (this->current_size > this->max_size) {
@@ -129,7 +130,7 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
     std::vector<Range> partial_hit_ranges;
 
     // Find the first range that might overlap with the query
-    auto it = orderedRanges.upper_bound(Range({start_key, start_key}, {}, 1)); // the parameter is a virtual temp range
+    auto it = orderedRanges.upper_bound(Range({start_key}, {""}, 1)); // the parameter is a virtual temp range
     if (it != orderedRanges.begin()) {
         --it;
     }
@@ -194,9 +195,10 @@ void RBTreeRangeCache::victim() {
     }
     auto victimRangeStartKey = lengthMap.begin()->second;
     // find the range in orderedRanges and remove it
-    auto it = orderedRanges.find(Range({victimRangeStartKey, victimRangeStartKey}, {}, 1));
+    auto it = orderedRanges.find(Range({victimRangeStartKey}, {""}, 1));
     if (it == orderedRanges.end() || it->startKey() != victimRangeStartKey) {
         Logger::error("Victim range not found in orderedRanges");
+        assert(false);
         return;
     }
 
@@ -218,7 +220,7 @@ void RBTreeRangeCache::victim() {
 }
 
 void RBTreeRangeCache::pinRange(std::string startKey) {
-    auto it = orderedRanges.find(Range({startKey, startKey}, {}, 1));
+    auto it = orderedRanges.find(Range({startKey}, {""}, 1));
     if (it != orderedRanges.end() && it->startKey() == startKey) {
         // update the timestamp
         it->setTimestamp(this->cache_timestamp++);
