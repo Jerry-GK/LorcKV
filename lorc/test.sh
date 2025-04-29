@@ -1,6 +1,9 @@
 #!/bin/bash
 
 # arg1 = run/profile
+# binName="testVecLORC"
+binName="testContLORC"
+
 mode=$1
 if [ -z "$mode" ]; then
     echo "Usage: $0 <run|profile>"
@@ -17,18 +20,18 @@ make cleanObjects
 
 # run
 if [ "$mode" == "run" ]; then
-    ./bin/testVecLORC
+    ./bin/$binName
 fi
 
 # debug
 if [ "$mode" == "debug" ]; then
-    gdb ./bin/testVecLORC
+    gdb ./bin/$binName
 fi
 
 # profile
 if [ "$mode" == "profile" ]; then
     echo "Profiling..."
-    perf record -F 99 --call-graph dwarf -g -o ./profile/profile.data ./bin/testVecLORC
+    perf record -F 99 --call-graph dwarf -g -o ./profile/profile.data ./bin/$binName
 
     # 生成火焰图（需提前安装FlameGraph工具）
     perf script -i ./profile/profile.data | \

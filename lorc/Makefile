@@ -3,7 +3,8 @@ CXX = g++
 CXXFLAGS = -std=c++17 -g -O2 -fno-omit-frame-pointer -rdynamic
 
 # 目标文件
-TARGET = ./bin/testVecLORC
+# TARGET = ./bin/testVecLORC
+TARGET = ./bin/testContLORC
 
 # 源文件目录
 SRC_DIRS = . cache range iterator logger storage

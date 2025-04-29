@@ -255,7 +255,7 @@ void ContRange::truncate(int length) const {
     size = length;
 }
 
-int ContRange::find(Slice key) const {
+int ContRange::find(const Slice& key) const {
     assert(valid && size > 0 && subrange_view_start_pos == -1);
     if (!valid || size == 0) {
         return -1;
@@ -357,4 +357,42 @@ ContRange ContRange::concatRangesMoved(std::vector<ContRange>& ranges) {
     Logger::debug("Merged ContRange: " + std::to_string(total_size) + " values, " + std::to_string(total_values_buffer_size) + " bytes");
     
     return ContRange(new_data, -1, total_size);
+}
+
+// build methods
+void ContRange::reserve(size_t keys_buffer_size, size_t values_buffer_size, size_t len) {
+    assert(valid);
+    if (data) {
+        delete[] data->keys_buffer;
+        delete[] data->values_buffer;
+        delete[] data->key_views;
+        delete[] data->value_views;
+    }
+    
+    data = std::make_shared<RangeData>();
+    data->keys_buffer = new char[keys_buffer_size];
+    data->values_buffer = new char[values_buffer_size];
+    data->keys_buffer_size = keys_buffer_size;
+    data->values_buffer_size = values_buffer_size;
+    data->key_views = new StringView[len];
+    data->value_views = new StringView[len];
+    
+    this->size = 0;
+    this->valid = true;
+}
+
+void ContRange::emplace(const Slice& key, const Slice& value) {
+    assert(valid && subrange_view_start_pos == -1);
+    
+    data->key_views[size].offset = size == 0 ? 0 : data->key_views[size - 1].offset + data->key_views[size - 1].length;
+    data->key_views[size].length = key.size();
+    assert(data->key_views[size].offset + data->key_views[size].length <= data->keys_buffer_size);
+    memcpy(data->keys_buffer + data->key_views[size].offset, key.data(), key.size());
+    
+    data->value_views[size].offset = size == 0 ? 0 : data->value_views[size - 1].offset + data->value_views[size - 1].length;
+    data->value_views[size].length = value.size();
+    assert(data->value_views[size].offset + data->value_views[size].length <= data->values_buffer_size);
+    memcpy(data->values_buffer + data->value_views[size].offset, value.data(), value.size());
+    
+    this->size++;
 }

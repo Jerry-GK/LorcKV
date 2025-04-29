@@ -51,6 +51,12 @@ ContRange(bool valid = false);
     ContRange& operator=(const ContRange& other);
     ContRange& operator=(ContRange&& other) noexcept;
 
+    // reserve the range
+    void reserve(size_t keys_buffer_size, size_t values_buffer_size, size_t len);
+    
+    // empalce a key-value pair copy
+    void emplace(const Slice& key, const Slice& value);
+
     Slice startKey() const;
     Slice endKey() const;
 
@@ -69,7 +75,7 @@ ContRange(bool valid = false);
     void truncate(int length) const;
 
     // return the first element index whose key is < greater than or equal > to key
-    int find(Slice key) const;
+    int find(const Slice& key) const;
 
     std::string toString() const;
 
