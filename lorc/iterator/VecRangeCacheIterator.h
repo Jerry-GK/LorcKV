@@ -1,25 +1,25 @@
 #pragma once
 
 #include <string>
-#include "../range/Range.h"
+#include "../range/VecRange.h"
 
-class LogicallyOrderedRangeCache;
+class LogicallyOrderedVecRangeCache;
 
-class RangeCacheIterator {
+class VecRangeCacheIterator {
 public:
-    RangeCacheIterator() = default;
+    VecRangeCacheIterator() = default;
     // No copying allowed
-    RangeCacheIterator(const RangeCacheIterator&) = delete;
-    void operator=(const RangeCacheIterator&) = delete;
+    VecRangeCacheIterator(const VecRangeCacheIterator&) = delete;
+    void operator=(const VecRangeCacheIterator&) = delete;
 
-    virtual ~RangeCacheIterator() = default;
+    virtual ~VecRangeCacheIterator() = default;
 
     // An RangeCacheIterator is either positioned at a key/value pair, or
     // not valid.  This method returns true iff the RangeCacheIterator is valid.
     // Always returns false if !status().ok().
     virtual bool Valid() const = 0;
 
-    // Returns true if the RangeCacheIterator has more keys in the range
+    // Returns true if the RangeCacheIterator has more keys in the VecRange
     virtual bool HasNextInRange() const = 0;
 
     // Position at the first key in the source.  The RangeCacheIterator is Valid()

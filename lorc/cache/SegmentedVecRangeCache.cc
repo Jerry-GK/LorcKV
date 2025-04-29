@@ -2,10 +2,10 @@
 #include <iostream>
 #include <cassert>
 #include <iomanip>
-#include "SegmentedRangeCache.h"
+#include "SegmentedVecRangeCache.h"
 
 SegmentedRangeCache::SegmentedRangeCache(int max_size)
-    : LogicallyOrderedRangeCache(max_size) {
+    : LogicallyOrderedVecRangeCache(max_size) {
     entries = std::vector<SegmentedRangeCacheEntry>();
     cache_timestamp = 0;
 }
@@ -14,31 +14,31 @@ SegmentedRangeCache::~SegmentedRangeCache() {
     entries.clear();
 }
 
-void SegmentedRangeCache::putRange(Range&& newRange) {
+void SegmentedRangeCache::putRange(VecRange&& newRange) {
     std::chrono::high_resolution_clock::time_point start_time;
     if (this->enable_statistic) {
         start_time = std::chrono::high_resolution_clock::now();
     }
 
-    std::vector<Range> overlappingRanges;
+    std::vector<VecRange> overlappingRanges;
     std::string newRangeStr = newRange.toString();
 
-    // Find all ranges that overlap with the new range
+    // Find all ranges that overlap with the new VecRange
     auto it = entries.begin();
     while (it != entries.end()) {
         bool isOverlap = (newRange.endKey() >= it->getRange().startKey()) && 
                          (newRange.startKey() <= it->getRange().endKey());
         if (isOverlap) {
-            // Update merged range boundaries
+            // Update merged VecRange boundaries
             overlappingRanges.emplace_back(it->getRange());
             this->current_size -= it->getRange().getSize();
-            it = entries.erase(it); // Remove old range
+            it = entries.erase(it); // Remove old VecRange
         } else {
             ++it;
         }
     }
 
-    // Merge data: new range data takes priority, preserve non-overlapping parts of old ranges
+    // Merge data: new VecRange data takes priority, preserve non-overlapping parts of old ranges
     std::vector<std::string>& mergedKeys = newRange.getKeys();
     std::vector<std::string>& mergedValues = newRange.getValues();
 
@@ -86,7 +86,7 @@ void SegmentedRangeCache::putRange(Range&& newRange) {
     // mergedKeys.erase(last, mergedKeys.end());
 
     // 创建合并后的新Range并插入缓存
-    Range mergedRange(std::move(mergedKeys), std::move(mergedValues), mergedKeys.size());
+    VecRange mergedRange(std::move(mergedKeys), std::move(mergedValues), mergedKeys.size());
     entries.emplace_back(SegmentedRangeCacheEntry(mergedRange, this->cache_timestamp++));
 
     // Keep ranges ordered by startKey
@@ -106,10 +106,10 @@ void SegmentedRangeCache::putRange(Range&& newRange) {
     Logger::debug("----------------------------------------");
     Logger::debug("All ranges after putRange and victim: " + newRangeStr);
     for (int i = 0; i < this->entries.size(); i++) {
-        const Range& range = this->entries[i].getRange();
-        Logger::debug("Range[" + std::to_string(i+1) + "]: " + range.toString());
+        const VecRange& VecRange = this->entries[i].getRange();
+        Logger::debug("VecRange[" + std::to_string(i+1) + "]: " + VecRange.toString());
     }
-    Logger::debug("Total range size: " + std::to_string(this->current_size));
+    Logger::debug("Total VecRange size: " + std::to_string(this->current_size));
     Logger::debug("----------------------------------------");
 
     if (this->enable_statistic) {
@@ -126,15 +126,15 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
         start_time = std::chrono::high_resolution_clock::now();
     }
 
-    Logger::debug("Get Range: < " + start_key + " -> " + end_key + " >");
-    CacheResult result(false, false, Range(false), {});
-    std::vector<Range> partial_hit_ranges;
+    Logger::debug("Get VecRange: < " + start_key + " -> " + end_key + " >");
+    CacheResult result(false, false, VecRange(false), {});
+    std::vector<VecRange> partial_hit_ranges;
     for (size_t i = 0; i < this->entries.size(); i++) {
         if (entries[i].getRange().startKey() <= start_key && entries[i].getRange().endKey() >= end_key) {
             // full hit
             increaseFullHitCount();
             this->pinRange(i);
-            Range fullHitRange = entries[i].getRange().subRange(start_key, end_key);
+            VecRange fullHitRange = entries[i].getRange().subRange(start_key, end_key);
             increaseHitSize(fullHitRange.getSize());
             result = CacheResult(true, false, std::move(fullHitRange), {});
             break;
@@ -152,10 +152,10 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
 
     if (!result.isFullHit() && !partial_hit_ranges.empty()) {
         // partial hit
-        for (const auto& range : partial_hit_ranges) {
-            increaseHitSize(range.getSize());
+        for (const auto& VecRange : partial_hit_ranges) {
+            increaseHitSize(VecRange.getSize());
         }
-        result = CacheResult(false, true, Range(false), std::move(partial_hit_ranges));
+        result = CacheResult(false, true, VecRange(false), std::move(partial_hit_ranges));
     } 
 
     if (this->enable_statistic) {
@@ -169,14 +169,14 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
 }
 
 // void SegmentedRangeCache::victim() {
-//     // victim a random range
+//     // victim a random VecRange
 //     if (this->current_size <= this->max_size) {
 //         return;
 //     }
 //     int randomIndex = rand() % entries.size();
 //     if (entries.size() == 1) {
 //         Logger::debug("Truncate: " + entries[0].getRange().toString());
-//         Range truncatedRange = entries[0].getRange().subRange(0, this->max_size - 1);
+//         VecRange truncatedRange = entries[0].getRange().subRange(0, this->max_size - 1);
 //         entries.erase(entries.begin());
 //         entries.emplace_back(SegmentedRangeCacheEntry(truncatedRange, this->cache_timestamp++));
 //         this->current_size = truncatedRange.getSize();
@@ -188,7 +188,7 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
 // }
 
 // void SegmentedRangeCache::victim() {
-//     // victim the LRU range
+//     // victim the LRU VecRange
 //     if (this->current_size <= this->max_size) {
 //         return;
 //     }
@@ -197,10 +197,10 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
 //             return a.getTimestamp() < b.getTimestamp();
 //         });
 //         if (minRangeIt != entries.end()) {
-//             // only truncate if there is only one range left (seldom triggered)
+//             // only truncate if there is only one VecRange left (seldom triggered)
 //             if (entries.size() == 1) {
 //                 Logger::debug("Truncate: " + minRangeIt->getRange().toString());
-//                 Range truncatedRange = minRangeIt->getRange().subRange(0, this->max_size - 1);
+//                 VecRange truncatedRange = minRangeIt->getRange().subRange(0, this->max_size - 1);
 //                 entries.erase(minRangeIt);
 //                 entries.emplace_back(SegmentedRangeCacheEntry(truncatedRange, this->cache_timestamp++));
 //                 this->current_size = truncatedRange.getSize();
@@ -210,17 +210,17 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
 //                 entries.erase(minRangeIt);
 //             }
 //     } else {
-//         Logger::debug("No range to victim");
+//         Logger::debug("No VecRange to victim");
 //     }
 // }
 
 void SegmentedRangeCache::victim() {
-    // Remove the shortest range to make space
+    // Remove the shortest VecRange to make space
     if (this->current_size <= this->max_size) {
         return;
     }
     
-    // Find the range with minimum size
+    // Find the VecRange with minimum size
     auto minRangeIt = std::min_element(entries.begin(), entries.end(),
         [](const SegmentedRangeCacheEntry& a, const SegmentedRangeCacheEntry& b) {
             return a.getRange().getSize() < b.getRange().getSize();
@@ -233,19 +233,19 @@ void SegmentedRangeCache::victim() {
             this->current_size -= minRangeIt->getRange().getSize();
             entries.erase(minRangeIt);
         } else {
-            // If only one range exists, truncate it
+            // If only one VecRange exists, truncate it
             Logger::debug("Truncate: " + minRangeIt->getRange().toString());
             minRangeIt->getRange().truncate(this->max_size);
             this->pinRange(0);
             this->current_size = minRangeIt->getRange().getSize();
         }
     } else {
-        Logger::debug("No range to victim");
+        Logger::debug("No VecRange to victim");
     }
 }
 
 // void SegmentedRangeCache::victim() {
-//     // victim the longest range
+//     // victim the longest VecRange
 //     if (this->current_size <= this->max_size) {
 //         return;
 //     }
@@ -254,10 +254,10 @@ void SegmentedRangeCache::victim() {
 //             return a.getRange().getSize() > b.getRange().getSize();
 //         });
 //     if (minRangeIt != entries.end()) {
-//         // only truncate if there is only one range left (seldom triggered)
+//         // only truncate if there is only one VecRange left (seldom triggered)
 //         if (entries.size() == 1) {
 //             Logger::debug("Truncate: " + minRangeIt->getRange().toString());
-//             Range truncatedRange = minRangeIt->getRange().subRange(0, this->max_size - 1);
+//             VecRange truncatedRange = minRangeIt->getRange().subRange(0, this->max_size - 1);
 //             entries.erase(minRangeIt);
 //             entries.emplace_back(SegmentedRangeCacheEntry(truncatedRange, this->cache_timestamp++));
 //             this->current_size = truncatedRange.getSize();
@@ -267,7 +267,7 @@ void SegmentedRangeCache::victim() {
 //             entries.erase(minRangeIt);
 //         }
 //     } else {
-//         Logger::debug("No range to victim");
+//         Logger::debug("No VecRange to victim");
 //     }
 // }
 

@@ -2,12 +2,12 @@
 
 #include <set>
 #include <string>
-#include "RangeCacheIterator.h"
+#include "VecRangeCacheIterator.h"
 
 class RBTreeRangeCache;
-class Range;
+class VecRange;
 
-class RBTreeRangeCacheIterator : public RangeCacheIterator {
+class RBTreeRangeCacheIterator : public VecRangeCacheIterator {
 public:
     explicit RBTreeRangeCacheIterator(const RBTreeRangeCache* cache);
     
@@ -26,7 +26,7 @@ public:
 
 private:
     const RBTreeRangeCache* cache;
-    std::set<Range>::const_iterator current_range;
+    std::set<VecRange>::const_iterator current_range;
     int current_index;
     std::string status_str;
     bool valid;

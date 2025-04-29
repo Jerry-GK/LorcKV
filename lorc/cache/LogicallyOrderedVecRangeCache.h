@@ -5,26 +5,26 @@
 #include <string>
 #include <memory>
 #include <chrono>
-#include "../range/Range.h"
-#include "../iterator/RangeCacheIterator.h"
+#include "../range/VecRange.h"
+#include "../iterator/VecRangeCacheIterator.h"
 
 /**
  * Class that represents the result of a cache lookup operation.
  * It can indicate either a full hit, partial hit, or miss,
- * and contains the relevant range data.
+ * and contains the relevant VecRange data.
  */
 class CacheResult {
 public:
     // Deprecated constructor that used references instead of move semantics
-    // CacheResult(bool full_hit, bool partial_hit, Range& full_hit_range,
-    //             const std::vector<Range>& partial_hit_ranges)
+    // CacheResult(bool full_hit, bool partial_hit, VecRange& full_hit_range,
+    //             const std::vector<VecRange>& partial_hit_ranges)
     //     : full_hit(full_hit), partial_hit(partial_hit),
     //       full_hit_range(full_hit_range), 
     //       partial_hit_ranges(partial_hit_ranges) {}
 
     // Constructor using move semantics for better performance
-    CacheResult(bool full_hit, bool partial_hit, Range&& full_hit_range,
-                std::vector<Range>&& partial_hit_ranges)
+    CacheResult(bool full_hit, bool partial_hit, VecRange&& full_hit_range,
+                std::vector<VecRange>&& partial_hit_ranges)
         : full_hit(full_hit), partial_hit(partial_hit),
           full_hit_range(std::move(full_hit_range)), 
           partial_hit_ranges(std::move(partial_hit_ranges)) {}
@@ -53,13 +53,13 @@ public:
 
     bool isFullHit() const { return full_hit; }
     bool isPartialHit() const { return partial_hit; }
-    const Range& getFullHitRange() const { return full_hit_range; }
-    const std::vector<Range>& getPartialHitRanges() const { return partial_hit_ranges; }
+    const VecRange& getFullHitRange() const { return full_hit_range; }
+    const std::vector<VecRange>& getPartialHitRanges() const { return partial_hit_ranges; }
 private:
     bool full_hit;
     bool partial_hit;
-    Range full_hit_range;
-    std::vector<Range> partial_hit_ranges;
+    VecRange full_hit_range;
+    std::vector<VecRange> partial_hit_ranges;
 };
 
 class CacheStatistic {
@@ -105,21 +105,21 @@ private:
 };
 
 // This is a cache for ranges. Key-Value Ranges is the smallest unit of data that can be cached.
-class RangeCacheIterator;
+class VecRangeCacheIterator;
 
-class LogicallyOrderedRangeCache {
+class LogicallyOrderedVecRangeCache {
 public:
-    LogicallyOrderedRangeCache(int max_size);
-    virtual ~LogicallyOrderedRangeCache();
+    LogicallyOrderedVecRangeCache(int max_size);
+    virtual ~LogicallyOrderedVecRangeCache();
 
     /**
-     * Add a new range to the cache, merging with existing overlapping ranges.
-     * The new range's data takes precedence over existing data in overlapping regions.
+     * Add a new VecRange to the cache, merging with existing overlapping ranges.
+     * The new VecRange's data takes precedence over existing data in overlapping regions.
      */
-    virtual void putRange(Range&& range) = 0;
+    virtual void putRange(VecRange&& VecRange) = 0;
 
     /**
-     * Retrieve a range from the cache between start_key and end_key.
+     * Retrieve a VecRange from the cache between start_key and end_key.
      * Returns a CacheResult indicating full hit, partial hit, or miss.
      */
     virtual CacheResult getRange(const std::string& start_key, const std::string& end_key) = 0;
@@ -153,7 +153,7 @@ public:
     void increaseQuerySize(int size);
 
     /**
-     * Calculate the full hit rate of range queries.
+     * Calculate the full hit rate of VecRange queries.
      */
     double fullHitRate() const;
 
@@ -163,12 +163,12 @@ public:
     double hitSizeRate() const;
 
     /**
-     * Get a new range cache iterator.
+     * Get a new VecRange cache iterator.
      */
-    virtual RangeCacheIterator* newRangeCacheIterator() const = 0;
+    virtual VecRangeCacheIterator* newRangeCacheIterator() const = 0;
 
 protected:
-    friend class RangeCacheIterator;
+    friend class VecRangeCacheIterator;
 
     int max_size;
     int current_size;

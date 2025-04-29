@@ -69,20 +69,14 @@ class Slice {
   }
 
   // Return a string that contains the copy of the referenced data.
-  // when hex is true, returns a string of twice the length hex encoded (0-9A-F)
-  std::string ToString(bool hex = false) const;
+  std::string ToString(bool hex = false) const {
+    return std::string(data_, size_);
+  }
 
   // Return a string_view that references the same data as this slice.
   std::string_view ToStringView() const {
     return std::string_view(data_, size_);
   }
-
-  // Decodes the current slice interpreted as an hexadecimal string into result,
-  // if successful returns true, if this isn't a valid hex string
-  // (e.g not coming from Slice::ToString(true)) DecodeHex returns false.
-  // This slice is expected to have an even number of 0-9A-F characters
-  // also accepts lowercase (a-f)
-  bool DecodeHex(std::string* result) const;
 
   // Three-way comparison.  Returns value:
   //   <  0 iff "*this" <  "b",
@@ -103,51 +97,12 @@ class Slice {
   // Compare two slices and returns the first byte where they differ
   size_t difference_offset(const Slice& b) const;
 
+private:
   // private: make these public for rocksdbjni access
   const char* data_;
   size_t size_;
 
   // Intentionally copyable
-};
-
-// A likely more efficient alternative to std::optional<Slice>. For example,
-// an empty key might be distinct from "not specified" (and Slice* as an
-// optional is more troublesome to deal with).
-class OptSlice {
- public:
-  OptSlice() : slice_(nullptr, SIZE_MAX) {}
-  /*implicit*/ OptSlice(const Slice& s) : slice_(s) {}
-  /*implicit*/ OptSlice(const std::string& s) : slice_(s) {}
-  /*implicit*/ OptSlice(const std::string_view& sv) : slice_(sv) {}
-  /*implicit*/ OptSlice(const char* c_str) : slice_(c_str) {}
-  // For easier migrating from APIs uing Slice* as an optional type.
-  // CAUTION: OptSlice{nullptr} is "no value" while Slice{nullptr} is "empty"
-  /*implicit*/ OptSlice(std::nullptr_t) : OptSlice() {}
-
-  bool has_value() const noexcept { return slice_.size() != SIZE_MAX; }
-  explicit operator bool() const noexcept { return has_value(); }
-
-  const Slice& value() const noexcept {
-    assert(has_value());
-    return slice_;
-  }
-  const Slice& operator*() const noexcept { return value(); }
-  const Slice* operator->() const noexcept { return &value(); }
-
-  const Slice* AsPtr() const noexcept {
-    return has_value() ? &slice_ : nullptr;
-  }
-  // Populate from an optional pointer. This is a very explicit conversion
-  // to minimize risk of bugs as in
-  //   Slice start, limit;
-  //   RangeOpt rng = {&start, &limit};
-  //   start = ...;  // BUG: would not affect rng
-  static OptSlice CopyFromPtr(const Slice* ptr) {
-    return ptr ? OptSlice{*ptr} : OptSlice{};
-  }
-
- protected:
-  Slice slice_;
 };
 
 // A set of Slices that are virtually concatenated together.  'parts' points
@@ -167,6 +122,22 @@ inline bool operator==(const Slice& x, const Slice& y) {
 }
 
 inline bool operator!=(const Slice& x, const Slice& y) { return !(x == y); }
+
+inline bool operator<(const Slice& x, const Slice& y) {
+  return (x.compare(y) < 0);
+}
+
+inline bool operator>(const Slice& x, const Slice& y) {
+  return (x.compare(y) > 0);
+}
+
+inline bool operator<=(const Slice& x, const Slice& y) {
+  return (x.compare(y) <= 0);
+}
+
+inline bool operator>=(const Slice& x, const Slice& y) {
+  return (x.compare(y) >= 0);
+}
 
 inline int Slice::compare(const Slice& b) const {
   assert(data_ != nullptr && b.data_ != nullptr);

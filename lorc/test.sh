@@ -17,18 +17,18 @@ make cleanObjects
 
 # run
 if [ "$mode" == "run" ]; then
-    ./bin/testLORC
+    ./bin/testVecLORC
 fi
 
 # debug
 if [ "$mode" == "debug" ]; then
-    gdb ./bin/testLORC
+    gdb ./bin/testVecLORC
 fi
 
 # profile
 if [ "$mode" == "profile" ]; then
     echo "Profiling..."
-    perf record -F 99 --call-graph dwarf -g -o ./profile/profile.data ./bin/testLORC
+    perf record -F 99 --call-graph dwarf -g -o ./profile/profile.data ./bin/testVecLORC
 
     # 生成火焰图（需提前安装FlameGraph工具）
     perf script -i ./profile/profile.data | \

@@ -4,17 +4,17 @@
 #include <iomanip>
 #include <algorithm>
 #include <climits>
-#include "RowRangeCache.h"
+#include "RowVecRangeCache.h"
 
 RowRangeCache::RowRangeCache(int max_size)
-    : LogicallyOrderedRangeCache(max_size) {
+    : LogicallyOrderedVecRangeCache(max_size) {
 }
 
 RowRangeCache::~RowRangeCache() {
     row_map.clear();
 }
 
-void RowRangeCache::putRange(Range&& newRange) {
+void RowRangeCache::putRange(VecRange&& newRange) {
     std::chrono::high_resolution_clock::time_point start_time;
     if (this->enable_statistic) {
         start_time = std::chrono::high_resolution_clock::now();
@@ -35,7 +35,7 @@ void RowRangeCache::putRange(Range&& newRange) {
     // Debug output: print all ranges in order
     Logger::debug("----------------------------------------");
     Logger::debug("All ranges after putRange and victim: " + newRangeStr);
-    Logger::debug("Total range size: " + std::to_string(this->current_size));
+    Logger::debug("Total VecRange size: " + std::to_string(this->current_size));
     Logger::debug("----------------------------------------");
 
     if (this->enable_statistic) {
@@ -52,8 +52,8 @@ CacheResult RowRangeCache::getRange(const std::string& start_key, const std::str
         start_time = std::chrono::high_resolution_clock::now();
     }
 
-    Logger::debug("Get Range: < " + start_key + " -> " + end_key + " >");
-    CacheResult result(false, false, Range(false), {});
+    Logger::debug("Get VecRange: < " + start_key + " -> " + end_key + " >");
+    CacheResult result(false, false, VecRange(false), {});
     std::vector<std::string> keys;
     std::vector<std::string> values;
     bool hit = false;
@@ -63,14 +63,14 @@ CacheResult RowRangeCache::getRange(const std::string& start_key, const std::str
         // for row cache, regard this overlap situation as (full) hit
         hit = true;
         while(it != row_map.end() && it->first <= end_key) {
-            // check if the key is in the range
+            // check if the key is in the VecRange
             keys.emplace_back(it->first);
             values.emplace_back(it->second);
             it++;
         }
     } 
 
-    Range full_hit_range(std::move(keys), std::move(values), keys.size());
+    VecRange full_hit_range(std::move(keys), std::move(values), keys.size());
 
     if(hit) {
         increaseFullHitCount();
@@ -95,7 +95,7 @@ CacheResult RowRangeCache::getRange(const std::string& start_key, const std::str
 }
 
 void RowRangeCache::victim() {
-    // Evict the shortest range to minimize impact
+    // Evict the shortest VecRange to minimize impact
     if (this->current_size <= this->max_size) {
         return;
     }

@@ -3,20 +3,20 @@
 #include <vector>
 #include <set>
 #include <map>
-#include "LogicallyOrderedRangeCache.h"
-#include "../range/Range.h"
+#include "LogicallyOrderedVecRangeCache.h"
+#include "../range/VecRange.h"
 #include "../logger/Logger.h"
 
 /**
- * RowRangeCache: A cache implementation using a map to store range data
+ * RowRangeCache: A cache implementation using a map to store VecRange data
  * No LRU implementation, only used for testing (victim randomly)
  */
-class RowRangeCache : public LogicallyOrderedRangeCache {
+class RowRangeCache : public LogicallyOrderedVecRangeCache {
 public:
     RowRangeCache(int max_size);
     ~RowRangeCache() override;
 
-    void putRange(Range&& range) override;
+    void putRange(VecRange&& VecRange) override;
     // TODO(jr): RowRangeCache::gerRange is not clear and should be deperecated
     CacheResult getRange(const std::string& start_key, const std::string& end_key) override;
     void victim() override;

@@ -2,11 +2,11 @@
 // #include <unordered_map>
 // #include <iomanip>
 // #include <fstream>
-// #include "cache/LogicallyOrderedRangeCache.h"
-// #include "cache/SegmentedRangeCache.h"
-// #include "cache/RowRangeCache.h"
-// #include "cache/RBTreeRangeCache.h"
-// #include "range/Range.h"
+// #include "cache/LogicallyOrderedVecRangeCache.h"
+// #include "cache/SegmentedVecRangeCache.h"
+// #include "cache/RowVecRangeCache.h"
+// #include "cache/RBTreeVecRangeCache.h"
+// #include "range/VecRange.h"
 // #include "logger/Logger.h"
 
 // const int num_keys_level = 1000000;
@@ -41,9 +41,9 @@
 //     Logger::setLevel(Logger::DEBUG); 
 //     Logger::info("Start testing...");
 //     int cache_size = (end_key - start_key + 1) * cache_size_ratio;
-//     // LogicallyOrderedRangeCache* lorc = new SegmentedRangeCache(cache_size);
-//     // LogicallyOrderedRangeCache* lorc = new RowRangeCache(cache_size);
-//     LogicallyOrderedRangeCache* lorc = new RBTreeRangeCache(cache_size);
+//     // LogicallyOrderedVecRangeCache* lorc = new SegmentedRangeCache(cache_size);
+//     // LogicallyOrderedVecRangeCache* lorc = new RowRangeCache(cache_size);
+//     LogicallyOrderedVecRangeCache* lorc = new RBTreeRangeCache(cache_size);
 //     lorc->setEnableStatistic(true);
 
 //     std::unordered_map<std::string, std::string> standard_kv;

@@ -1,6 +1,6 @@
 #include "RBTreeRangeCacheIterator.h"
-#include "../cache/RBTreeRangeCache.h"
-#include "../range/Range.h"
+#include "../cache/RBTreeVecRangeCache.h"
+#include "../range/VecRange.h"
 
 RBTreeRangeCacheIterator::~RBTreeRangeCacheIterator() {
     
@@ -58,7 +58,7 @@ void RBTreeRangeCacheIterator::Seek(const std::string& target) {
         valid = false;
         return;
     }
-    Range temp_range({target}, {""}, 1);
+    VecRange temp_range({target}, {""}, 1);
     current_range = cache->orderedRanges.upper_bound(temp_range); // startKey > target
     if (current_range != cache->orderedRanges.begin()) {
         --current_range;
@@ -70,7 +70,7 @@ void RBTreeRangeCacheIterator::Seek(const std::string& target) {
             ++current_range;
             current_index = 0;
             if (current_range == cache->orderedRanges.end()) {
-                status_str = "No valid range for Seek found for target: " + target;
+                status_str = "No valid VecRange for Seek found for target: " + target;
                 valid = false;
                 return;
             }
@@ -88,7 +88,7 @@ void RBTreeRangeCacheIterator::SeekForPrev(const std::string& target) {
         valid = false;
         return;
     }
-    Range temp_range({target}, {""}, 1);
+    VecRange temp_range({target}, {""}, 1);
     current_range = cache->orderedRanges.upper_bound(temp_range);
     if (current_range != cache->orderedRanges.begin()) {
         --current_range;
@@ -101,7 +101,7 @@ void RBTreeRangeCacheIterator::SeekForPrev(const std::string& target) {
         }
         valid = true;
     } else {
-        status_str = "No valid range for SeekForPrev found for target: " + target;
+        status_str = "No valid VecRange for SeekForPrev found for target: " + target;
         valid = false;
     }
 }

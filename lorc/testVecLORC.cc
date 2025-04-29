@@ -5,12 +5,12 @@
 #include <cassert>
 #include <chrono>
 
-#include "cache/LogicallyOrderedRangeCache.h"
-#include "cache/SegmentedRangeCache.h"
-#include "cache/RowRangeCache.h"
-#include "cache/RBTreeRangeCache.h"
-#include "iterator/RangeCacheIterator.h"
-#include "range/Range.h"
+#include "cache/LogicallyOrderedVecRangeCache.h"
+#include "cache/SegmentedVecRangeCache.h"
+#include "cache/RowVecRangeCache.h"
+#include "cache/RBTreeVecRangeCache.h"
+#include "iterator/VecRangeCacheIterator.h"
+#include "range/VecRange.h"
 #include "logger/Logger.h"
 #include "storage/KVMap.h"
 #include "storage/KVMapIterator.h"
@@ -42,15 +42,15 @@ std::string genValueStr(std::string key) {
     return value;
 }
 
-void executeRangeQuery(KVMap* kv_map, LogicallyOrderedRangeCache* lorc, const std::string& start_key, int range_len) {    
-    Logger::info("Executing range query: < StartKey = " + start_key + ", len = " + std::to_string(range_len) + ", EndKey = " \
+void executeRangeQuery(KVMap* kv_map, LogicallyOrderedVecRangeCache* lorc, const std::string& start_key, int range_len) {    
+    Logger::info("Executing VecRange query: < StartKey = " + start_key + ", len = " + std::to_string(range_len) + ", EndKey = " \
         + std::to_string((std::stoi(start_key) + range_len - 1)) + " >");
     std::vector<std::string> keys, values;
     keys.reserve(range_len);
     values.reserve(range_len);
 
     int len = 0;
-    RangeCacheIterator* rc_it = lorc->newRangeCacheIterator();
+    VecRangeCacheIterator* rc_it = lorc->newRangeCacheIterator();
     rc_it->Seek(start_key);
     KVMapIterator* kv_it = kv_map->newKVMapIterator(); // invalid at first
     if (!(rc_it->Valid() && rc_it->key() == start_key)) {   // avoid unnecessary kv seek
@@ -89,7 +89,7 @@ void executeRangeQuery(KVMap* kv_map, LogicallyOrderedRangeCache* lorc, const st
             if (len < range_len) {
                 kv_it->Seek(last_read_rc_key);
                 if (kv_it->Valid() && kv_it->key() == last_read_rc_key) {
-                    kv_it->Next(); // skip the last key read in range cache
+                    kv_it->Next(); // skip the last key read in VecRange cache
                 }
             }
         } else if (rc_it->Valid() && (kv_it->Valid() && rc_it->key() > kv_it->key())) {
@@ -115,13 +115,13 @@ void executeRangeQuery(KVMap* kv_map, LogicallyOrderedRangeCache* lorc, const st
     if (do_validation) {
         bool validation_success = kv_map->Validate(keys, values);
         if (!validation_success) {
-            Logger::error("Validation failed for range: < StartKey = " + start_key + ", len = " + std::to_string(range_len) + ", EndKey = " \
+            Logger::error("Validation failed for VecRange: < StartKey = " + start_key + ", len = " + std::to_string(range_len) + ", EndKey = " \
                 + std::to_string((std::stoi(start_key) + range_len - 1)) + " >");
         }
     }   
 
     if (!full_hit) {
-        lorc->putRange(Range(std::move(keys), std::move(values), range_len)); 
+        lorc->putRange(VecRange(std::move(keys), std::move(values), range_len)); 
     } else {
         lorc->increaseFullHitCount();
     }
@@ -142,9 +142,9 @@ int main() {
     Logger::setLevel(Logger::DEBUG); 
     Logger::info("Start testing...");
     int cache_size = (end_key - start_key + 1) * cache_size_ratio;
-    // LogicallyOrderedRangeCache* lorc = new SegmentedRangeCache(cache_size);
-    // LogicallyOrderedRangeCache* lorc = new RowRangeCache(cache_size);
-    LogicallyOrderedRangeCache* lorc = new RBTreeRangeCache(cache_size);
+    // LogicallyOrderedVecRangeCache* lorc = new SegmentedRangeCache(cache_size);
+    // LogicallyOrderedVecRangeCache* lorc = new RowRangeCache(cache_size);
+    LogicallyOrderedVecRangeCache* lorc = new RBTreeRangeCache(cache_size);
     lorc->setEnableStatistic(true);
 
     KVMap* kv_map = new KVMap();
@@ -182,10 +182,10 @@ int main() {
     // output cache statistic
     if (lorc->enableStatistic()) {
         Logger::info("Cache Statistic:");
-        Logger::info("Put Range Num: " + std::to_string(lorc->getCacheStatistic().getPutRangeNum()));
-        Logger::info("Get Range Num: " + std::to_string(lorc->getCacheStatistic().getGetRangeNum()));
-        Logger::info("Avg Put Range Time: " + std::to_string(lorc->getCacheStatistic().getAvgPutRangeTime()) + " us");
-        Logger::info("Avg Get Range Time: " + std::to_string(lorc->getCacheStatistic().getAvgGetRangeTime()) + " us");
+        Logger::info("Put VecRange Num: " + std::to_string(lorc->getCacheStatistic().getPutRangeNum()));
+        Logger::info("Get VecRange Num: " + std::to_string(lorc->getCacheStatistic().getGetRangeNum()));
+        Logger::info("Avg Put VecRange Time: " + std::to_string(lorc->getCacheStatistic().getAvgPutRangeTime()) + " us");
+        Logger::info("Avg Get VecRange Time: " + std::to_string(lorc->getCacheStatistic().getAvgGetRangeTime()) + " us");
     }
     
     Logger::info("Average Query Time: " + std::to_string(total_query_time / num_queries) + " us");

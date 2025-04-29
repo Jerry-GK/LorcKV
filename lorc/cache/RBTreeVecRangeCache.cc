@@ -4,11 +4,11 @@
 #include <iomanip>
 #include <algorithm>
 #include <climits>
-#include "RBTreeRangeCache.h"
+#include "RBTreeVecRangeCache.h"
 #include "../iterator/RBTreeRangeCacheIterator.h"
 
 RBTreeRangeCache::RBTreeRangeCache(int max_size)
-    : LogicallyOrderedRangeCache(max_size) {
+    : LogicallyOrderedVecRangeCache(max_size) {
 }
 
 RBTreeRangeCache::~RBTreeRangeCache() {
@@ -16,18 +16,18 @@ RBTreeRangeCache::~RBTreeRangeCache() {
     lengthMap.clear();
 }
 
-void RBTreeRangeCache::putRange(Range&& newRange) {
+void RBTreeRangeCache::putRange(VecRange&& newRange) {
     std::chrono::high_resolution_clock::time_point start_time;
     if (this->enable_statistic) {
         start_time = std::chrono::high_resolution_clock::now();
     }
     
-    // Merge strategy: new range data takes priority, old range data keeps non-overlapping parts
-    std::vector<Range> leftRanges;  // Store the left part of split ranges (at most one)
-    std::vector<Range> rightRanges; // Store the right part of split ranges (at most one)
+    // Merge strategy: new VecRange data takes priority, old VecRange data keeps non-overlapping parts
+    std::vector<VecRange> leftRanges;  // Store the left part of split ranges (at most one)
+    std::vector<VecRange> rightRanges; // Store the right part of split ranges (at most one)
     std::string newRangeStr = newRange.toString();
 
-    // Find the first range that may overlap with newRange
+    // Find the first VecRange that may overlap with newRange
     auto it = orderedRanges.upper_bound(newRange);
     if (it != orderedRanges.begin()) {
         --it;
@@ -39,7 +39,7 @@ void RBTreeRangeCache::putRange(Range&& newRange) {
             continue;
         }
 
-        // Handle left split: if existing range starts before newRange
+        // Handle left split: if existing VecRange starts before newRange
         if (it->startKey() < newRange.startKey() && it->endKey() >= newRange.startKey()) {
             int leftSplitIdx = it->find(newRange.startKey()) - 1;
             if (leftSplitIdx >= 0 && leftSplitIdx < it->getSize()) {
@@ -47,7 +47,7 @@ void RBTreeRangeCache::putRange(Range&& newRange) {
             }
         }
 
-        // Handle right split: if existing range ends after newRange
+        // Handle right split: if existing VecRange ends after newRange
         if (it->endKey() > newRange.endKey() && it->startKey() <= newRange.endKey()) {
             int rightSplitIdx = it->find(newRange.endKey());
             if (rightSplitIdx >= 0 && rightSplitIdx < it->getSize() && it->keyAt(rightSplitIdx) == newRange.endKey()) {
@@ -58,9 +58,9 @@ void RBTreeRangeCache::putRange(Range&& newRange) {
             }
         }
 
-        // Remove the old range from both containers
-        auto range = lengthMap.equal_range(it->getSize());
-        for (auto itt = range.first; itt != range.second; ++itt) {
+        // Remove the old VecRange from both containers
+        auto VecRange = lengthMap.equal_range(it->getSize());
+        for (auto itt = VecRange.first; itt != VecRange.second; ++itt) {
             if (itt->second == it->startKey()) {
                 lengthMap.erase(itt);
                 break;
@@ -77,21 +77,21 @@ void RBTreeRangeCache::putRange(Range&& newRange) {
     }
     
     // Reserve space to avoid reallocations
-    std::vector<Range> mergedRanges;
+    std::vector<VecRange> mergedRanges;
     mergedRanges.reserve(leftRanges.size() + 1 + rightRanges.size());
     
     // Use emplace_back and std::move to avoid unnecessary copies
-    for (Range& range : leftRanges) {
-        mergedRanges.emplace_back(std::move(range));
+    for (VecRange& VecRange : leftRanges) {
+        mergedRanges.emplace_back(std::move(VecRange));
     }
     mergedRanges.emplace_back(std::move(newRange));
-    for (Range& range : rightRanges) {
-        mergedRanges.emplace_back(std::move(range));
+    for (VecRange& VecRange : rightRanges) {
+        mergedRanges.emplace_back(std::move(VecRange));
     }
     
-    Range mergedRange = Range::concatRangesMoved(mergedRanges);
+    VecRange mergedRange = VecRange::concatRangesMoved(mergedRanges);
     
-    // Add the new merged range to both containers
+    // Add the new merged VecRange to both containers
     lengthMap.emplace(mergedRange.getSize(), mergedRange.startKey());
     this->current_size += mergedRange.getSize();
     orderedRanges.emplace(std::move(mergedRange));
@@ -106,9 +106,9 @@ void RBTreeRangeCache::putRange(Range&& newRange) {
     Logger::debug("----------------------------------------");
     Logger::debug("All ranges after putRange: " + newRangeStr);
     for (auto it = orderedRanges.begin(); it != orderedRanges.end(); ++it) {
-        Logger::debug("Range: " + it->toString());
+        Logger::debug("VecRange: " + it->toString());
     }
-    Logger::debug("Total range size: " + std::to_string(this->current_size));
+    Logger::debug("Total VecRange size: " + std::to_string(this->current_size));
     Logger::debug("----------------------------------------");
 
     if (this->enable_statistic) {
@@ -125,28 +125,28 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
         start_time = std::chrono::high_resolution_clock::now();
     }
     
-    Logger::debug("Get Range: < " + start_key + " -> " + end_key + " >");
-    CacheResult result(false, false, Range(false), {});
-    std::vector<Range> partial_hit_ranges;
+    Logger::debug("Get VecRange: < " + start_key + " -> " + end_key + " >");
+    CacheResult result(false, false, VecRange(false), {});
+    std::vector<VecRange> partial_hit_ranges;
 
-    // Find the first range that might overlap with the query
-    auto it = orderedRanges.upper_bound(Range({start_key}, {""}, 1)); // the parameter is a virtual temp range
+    // Find the first VecRange that might overlap with the query
+    auto it = orderedRanges.upper_bound(VecRange({start_key}, {""}, 1)); // the parameter is a virtual temp VecRange
     if (it != orderedRanges.begin()) {
         --it;
     }
     if (it != orderedRanges.end()) {
-        // Check for full hit: when a single range completely contains the query range
+        // Check for full hit: when a single VecRange completely contains the query VecRange
         if (it->startKey() <= start_key && it->endKey() >= end_key) {
             // full hit
             increaseFullHitCount();
             this->pinRange(it->startKey());
-            Range fullHitRange = it->subRange(start_key, end_key); // dont use subRangeView to preserve underlying data
+            VecRange fullHitRange = it->subRange(start_key, end_key); // dont use subRangeView to preserve underlying data
             increaseHitSize(fullHitRange.getSize());
             result = CacheResult(true, false, std::move(fullHitRange), {});
         } else {
             // Check for partial hits: when one or more ranges partially overlap with query
             if (it->endKey() < start_key) {
-                ++it; // Check the next range if current one ends too early
+                ++it; // Check the next VecRange if current one ends too early
             }
             if (it!= orderedRanges.end() && it->startKey() <= end_key && it->endKey() >= start_key) {
                 // partial hit
@@ -159,7 +159,7 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
                 } while(++it != orderedRanges.end() && it->startKey() <= end_key && it->endKey() >= start_key);
             } else {
                 // no hit
-                CacheResult result(false, false, Range(false), {});
+                CacheResult result(false, false, VecRange(false), {});
             }
         }
     }
@@ -171,11 +171,11 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
     // Handle partial hits
     if (!result.isFullHit() && !partial_hit_ranges.empty()) {
         // partial hit
-        for (const auto& range : partial_hit_ranges) {
-            increaseHitSize(range.getSize());
+        for (const auto& VecRange : partial_hit_ranges) {
+            increaseHitSize(VecRange.getSize());
         }
         // 使用std::move移动整个vector
-        result = CacheResult(false, true, Range(false), std::move(partial_hit_ranges));
+        result = CacheResult(false, true, VecRange(false), std::move(partial_hit_ranges));
     } 
 
     if (this->enable_statistic) {
@@ -189,28 +189,28 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
 }
 
 void RBTreeRangeCache::victim() {
-    // Evict the shortest range to minimize impact
+    // Evict the shortest VecRange to minimize impact
     if (this->current_size <= this->max_size) {
         return;
     }
     auto victimRangeStartKey = lengthMap.begin()->second;
-    // find the range in orderedRanges and remove it
-    auto it = orderedRanges.find(Range({victimRangeStartKey}, {""}, 1));
+    // find the VecRange in orderedRanges and remove it
+    auto it = orderedRanges.find(VecRange({victimRangeStartKey}, {""}, 1));
     if (it == orderedRanges.end() || it->startKey() != victimRangeStartKey) {
-        Logger::error("Victim range not found in orderedRanges");
+        Logger::error("Victim VecRange not found in orderedRanges");
         assert(false);
         return;
     }
 
     // If multiple ranges exist, remove the victim
-    // If only one range remains, truncate it to fit max_size
+    // If only one VecRange remains, truncate it to fit max_size
     if (orderedRanges.size() > 1 || this->max_size <= 0) {
         Logger::debug("Victim: " + it->toString());
         this->current_size -= lengthMap.begin()->first;
         orderedRanges.erase(it);
         lengthMap.erase(lengthMap.begin());
     } else {
-        // Truncate the last remaining range
+        // Truncate the last remaining VecRange
         Logger::debug("Truncate: " + it->toString());
         lengthMap.erase(lengthMap.find(it->getSize()));
         it->truncate(this->max_size);
@@ -220,13 +220,13 @@ void RBTreeRangeCache::victim() {
 }
 
 void RBTreeRangeCache::pinRange(std::string startKey) {
-    auto it = orderedRanges.find(Range({startKey}, {""}, 1));
+    auto it = orderedRanges.find(VecRange({startKey}, {""}, 1));
     if (it != orderedRanges.end() && it->startKey() == startKey) {
         // update the timestamp
         it->setTimestamp(this->cache_timestamp++);
     }
 }
 
-RangeCacheIterator* RBTreeRangeCache::newRangeCacheIterator() const {
+VecRangeCacheIterator* RBTreeRangeCache::newRangeCacheIterator() const {
     return new RBTreeRangeCacheIterator(this);
 }
