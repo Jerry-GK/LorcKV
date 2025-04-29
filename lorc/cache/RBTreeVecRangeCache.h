@@ -31,7 +31,7 @@ public:
     void pinRange(std::string startKey);
     
 private:
-    friend class RBTreeRangeCacheIterator;
+    friend class RBTreeVecRangeCacheIterator;
     std::set<VecRange> orderedRanges;     // Container for ranges sorted by start key
     std::multimap<int, std::string> lengthMap;  // Container for ranges sorted by length (for victim selection)
     uint64_t cache_timestamp;          // Timestamp for LRU-like functionality

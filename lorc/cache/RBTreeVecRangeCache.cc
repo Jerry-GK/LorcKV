@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <climits>
 #include "RBTreeVecRangeCache.h"
-#include "../iterator/RBTreeRangeCacheIterator.h"
+#include "../iterator/RBTreeVecRangeCacheIterator.h"
 
 RBTreeRangeCache::RBTreeRangeCache(int max_size)
     : LogicallyOrderedVecRangeCache(max_size) {
@@ -228,5 +228,5 @@ void RBTreeRangeCache::pinRange(std::string startKey) {
 }
 
 VecRangeCacheIterator* RBTreeRangeCache::newRangeCacheIterator() const {
-    return new RBTreeRangeCacheIterator(this);
+    return new RBTreeVecRangeCacheIterator(this);
 }

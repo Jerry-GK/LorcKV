@@ -1,26 +1,26 @@
-#include "RBTreeRangeCacheIterator.h"
+#include "RBTreeVecRangeCacheIterator.h"
 #include "../cache/RBTreeVecRangeCache.h"
 #include "../range/VecRange.h"
 
-RBTreeRangeCacheIterator::~RBTreeRangeCacheIterator() {
+RBTreeVecRangeCacheIterator::~RBTreeVecRangeCacheIterator() {
     
 }
 
-RBTreeRangeCacheIterator::RBTreeRangeCacheIterator(const RBTreeRangeCache* cache)
+RBTreeVecRangeCacheIterator::RBTreeVecRangeCacheIterator(const RBTreeRangeCache* cache)
     : cache(cache), valid(false), current_index(-1) {}
 
-bool RBTreeRangeCacheIterator::Valid() const {
+bool RBTreeVecRangeCacheIterator::Valid() const {
     return valid && status_str.empty();
 }
 
-bool RBTreeRangeCacheIterator::HasNextInRange() const {
+bool RBTreeVecRangeCacheIterator::HasNextInRange() const {
     if (!valid) {
         return false;
     }
     return current_index + 1 < current_range->getSize();
 }
 
-void RBTreeRangeCacheIterator::SeekToFirst() {
+void RBTreeVecRangeCacheIterator::SeekToFirst() {
     if (!cache) {
         status_str = "Invalid cache reference";
         valid = false;
@@ -36,7 +36,7 @@ void RBTreeRangeCacheIterator::SeekToFirst() {
     }
 }
 
-void RBTreeRangeCacheIterator::SeekToLast() {
+void RBTreeVecRangeCacheIterator::SeekToLast() {
     if (!cache) {
         status_str = "Invalid cache reference";
         valid = false;
@@ -52,7 +52,7 @@ void RBTreeRangeCacheIterator::SeekToLast() {
     valid = true;
 }
 
-void RBTreeRangeCacheIterator::Seek(const std::string& target) {
+void RBTreeVecRangeCacheIterator::Seek(const std::string& target) {
     if (!cache) {
         status_str = "Invalid cache reference";
         valid = false;
@@ -82,7 +82,7 @@ void RBTreeRangeCacheIterator::Seek(const std::string& target) {
     }
 }
 
-void RBTreeRangeCacheIterator::SeekForPrev(const std::string& target) {
+void RBTreeVecRangeCacheIterator::SeekForPrev(const std::string& target) {
     if (!cache) {
         status_str = "Invalid cache reference";
         valid = false;
@@ -106,7 +106,7 @@ void RBTreeRangeCacheIterator::SeekForPrev(const std::string& target) {
     }
 }
 
-void RBTreeRangeCacheIterator::Next() {
+void RBTreeVecRangeCacheIterator::Next() {
     if (!valid) {
         return;
     }
@@ -124,7 +124,7 @@ void RBTreeRangeCacheIterator::Next() {
     }
 }
 
-void RBTreeRangeCacheIterator::Prev() {
+void RBTreeVecRangeCacheIterator::Prev() {
     if (!valid) {
         return;
     }
@@ -142,7 +142,7 @@ void RBTreeRangeCacheIterator::Prev() {
     }
 }
 
-const std::string& RBTreeRangeCacheIterator::key() const {
+const std::string& RBTreeVecRangeCacheIterator::key() const {
     static std::string empty_string;
     if (!valid) {
         return empty_string;
@@ -150,7 +150,7 @@ const std::string& RBTreeRangeCacheIterator::key() const {
     return current_range->keyAt(current_index);
 }
 
-const std::string& RBTreeRangeCacheIterator::value() const {
+const std::string& RBTreeVecRangeCacheIterator::value() const {
     static std::string empty_string;
     if (!valid) {
         return empty_string;
@@ -158,6 +158,6 @@ const std::string& RBTreeRangeCacheIterator::value() const {
     return current_range->valueAt(current_index);
 }
 
-std::string RBTreeRangeCacheIterator::status() const {
+std::string RBTreeVecRangeCacheIterator::status() const {
     return this->status_str;
 }
