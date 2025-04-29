@@ -50,7 +50,7 @@ void executeRangeQuery(KVMap* kv_map, LogicallyOrderedVecRangeCache* lorc, const
     values.reserve(range_len);
 
     int len = 0;
-    VecRangeCacheIterator* rc_it = lorc->newRangeCacheIterator();
+    VecRangeCacheIterator* rc_it = lorc->newVecRangeCacheIterator();
     rc_it->Seek(start_key);
     KVMapIterator* kv_it = kv_map->newKVMapIterator(); // invalid at first
     if (!(rc_it->Valid() && rc_it->key() == start_key)) {   // avoid unnecessary kv seek
@@ -142,9 +142,9 @@ int main() {
     Logger::setLevel(Logger::DEBUG); 
     Logger::info("Start testing...");
     int cache_size = (end_key - start_key + 1) * cache_size_ratio;
-    // LogicallyOrderedVecRangeCache* lorc = new SegmentedRangeCache(cache_size);
-    // LogicallyOrderedVecRangeCache* lorc = new RowRangeCache(cache_size);
-    LogicallyOrderedVecRangeCache* lorc = new RBTreeRangeCache(cache_size);
+    // LogicallyOrderedVecRangeCache* lorc = new SegmentedVecRangeCache(cache_size);
+    // LogicallyOrderedVecRangeCache* lorc = new RowVecRangeCache(cache_size);
+    LogicallyOrderedVecRangeCache* lorc = new RBTreeVecRangeCache(cache_size);
     lorc->setEnableStatistic(true);
 
     KVMap* kv_map = new KVMap();

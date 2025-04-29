@@ -42,6 +42,8 @@ ContRange(bool valid = false);
     // create from vector
     // ContRange::ContRange(std::vector<std::string>& keys, std::vector<std::string>& values, size_t size);
     ContRange(std::vector<std::string>&& keys, std::vector<std::string>&& values, size_t size);
+    // create a ContRange with a single key-value pair, used for seekx
+    ContRange(Slice startKey);
     // deep copy
     ContRange(const ContRange& other);
     // move copy
@@ -73,4 +75,8 @@ ContRange(bool valid = false);
 
     // Merge ordered and non-overlapping ranges
     static ContRange concatRangesMoved(std::vector<ContRange>& ranges);
+
+    bool operator<(const ContRange& other) const {
+        return this->startKey() < other.startKey();
+    }
 };

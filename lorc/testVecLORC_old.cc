@@ -41,9 +41,9 @@
 //     Logger::setLevel(Logger::DEBUG); 
 //     Logger::info("Start testing...");
 //     int cache_size = (end_key - start_key + 1) * cache_size_ratio;
-//     // LogicallyOrderedVecRangeCache* lorc = new SegmentedRangeCache(cache_size);
-//     // LogicallyOrderedVecRangeCache* lorc = new RowRangeCache(cache_size);
-//     LogicallyOrderedVecRangeCache* lorc = new RBTreeRangeCache(cache_size);
+//     // LogicallyOrderedVecRangeCache* lorc = new SegmentedVecRangeCache(cache_size);
+//     // LogicallyOrderedVecRangeCache* lorc = new RowVecRangeCache(cache_size);
+//     LogicallyOrderedVecRangeCache* lorc = new RBTreeVecRangeCache(cache_size);
 //     lorc->setEnableStatistic(true);
 
 //     std::unordered_map<std::string, std::string> standard_kv;

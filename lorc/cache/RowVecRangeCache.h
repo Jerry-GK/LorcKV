@@ -11,10 +11,10 @@
  * RowRangeCache: A cache implementation using a map to store VecRange data
  * No LRU implementation, only used for testing (victim randomly)
  */
-class RowRangeCache : public LogicallyOrderedVecRangeCache {
+class RowVecRangeCache : public LogicallyOrderedVecRangeCache {
 public:
-    RowRangeCache(int max_size);
-    ~RowRangeCache() override;
+    RowVecRangeCache(int max_size);
+    ~RowVecRangeCache() override;
 
     void putRange(VecRange&& VecRange) override;
     // TODO(jr): RowRangeCache::gerRange is not clear and should be deperecated

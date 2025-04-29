@@ -16,7 +16,7 @@ VecRange::~VecRange() {
 }
 
 VecRange::VecRange(const VecRange& other) {
-    // assert(false); // (it should not be called in RBTreeRangeCache)
+    // assert(false); // (it should not be called in RBTreeVecRangeCache)
     this->valid = other.valid;
     this->size = other.size;
     this->timestamp = other.timestamp;
@@ -71,7 +71,7 @@ VecRange::VecRange(std::shared_ptr<RangeData> data, int subrange_view_start_pos,
 }
 
 VecRange& VecRange::operator=(const VecRange& other) {
-    // RBTreeRangeCache should never call this
+    // RBTreeVecRangeCache should never call this
     // assert(false);
     if (this != &other) {
         this->valid = other.valid;

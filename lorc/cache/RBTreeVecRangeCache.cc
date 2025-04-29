@@ -7,16 +7,16 @@
 #include "RBTreeVecRangeCache.h"
 #include "../iterator/RBTreeVecRangeCacheIterator.h"
 
-RBTreeRangeCache::RBTreeRangeCache(int max_size)
+RBTreeVecRangeCache::RBTreeVecRangeCache(int max_size)
     : LogicallyOrderedVecRangeCache(max_size) {
 }
 
-RBTreeRangeCache::~RBTreeRangeCache() {
+RBTreeVecRangeCache::~RBTreeVecRangeCache() {
     orderedRanges.clear();
     lengthMap.clear();
 }
 
-void RBTreeRangeCache::putRange(VecRange&& newRange) {
+void RBTreeVecRangeCache::putRange(VecRange&& newRange) {
     std::chrono::high_resolution_clock::time_point start_time;
     if (this->enable_statistic) {
         start_time = std::chrono::high_resolution_clock::now();
@@ -119,7 +119,7 @@ void RBTreeRangeCache::putRange(VecRange&& newRange) {
     }
 }
 
-CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::string& end_key) {
+CacheResult RBTreeVecRangeCache::getRange(const std::string& start_key, const std::string& end_key) {
     std::chrono::high_resolution_clock::time_point start_time;
     if (this->enable_statistic) {
         start_time = std::chrono::high_resolution_clock::now();
@@ -188,7 +188,7 @@ CacheResult RBTreeRangeCache::getRange(const std::string& start_key, const std::
     return result;
 }
 
-void RBTreeRangeCache::victim() {
+void RBTreeVecRangeCache::victim() {
     // Evict the shortest VecRange to minimize impact
     if (this->current_size <= this->max_size) {
         return;
@@ -219,7 +219,7 @@ void RBTreeRangeCache::victim() {
     }
 }
 
-void RBTreeRangeCache::pinRange(std::string startKey) {
+void RBTreeVecRangeCache::pinRange(std::string startKey) {
     auto it = orderedRanges.find(VecRange({startKey}, {""}, 1));
     if (it != orderedRanges.end() && it->startKey() == startKey) {
         // update the timestamp
@@ -227,6 +227,6 @@ void RBTreeRangeCache::pinRange(std::string startKey) {
     }
 }
 
-VecRangeCacheIterator* RBTreeRangeCache::newRangeCacheIterator() const {
+VecRangeCacheIterator* RBTreeVecRangeCache::newVecRangeCacheIterator() const {
     return new RBTreeVecRangeCacheIterator(this);
 }

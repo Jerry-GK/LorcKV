@@ -64,16 +64,6 @@ ContRange::ContRange(ContRange&& other) noexcept {
     other.timestamp = 0;
 }
 
-// ContRange::ContRange(std::vector<std::string>& keys, std::vector<std::string>& values, size_t size) {
-//     data = std::make_shared<RangeData>();
-//     data->keys = keys;
-//     data->values = values;
-//     this->subrange_view_start_pos = -1;
-//     this->valid = true;
-//     this->size = size;
-//     this->timestamp = 0;
-// }
-
 ContRange::ContRange(std::vector<std::string>&& keys, std::vector<std::string>&& values, size_t size) {
     data = std::make_shared<RangeData>();
     
@@ -112,6 +102,26 @@ ContRange::ContRange(std::vector<std::string>&& keys, std::vector<std::string>&&
     }
     
     this->size = size;
+    this->valid = true;
+    this->timestamp = 0;
+    this->subrange_view_start_pos = -1;
+}
+
+ContRange::ContRange(Slice startKey) {
+    data = std::make_shared<RangeData>();
+    data->keys_buffer = new char[startKey.size()];
+    data->values_buffer = nullptr;
+    data->keys_buffer_size = startKey.size();
+    data->values_buffer_size = 0;
+    data->key_views = new StringView[1];
+    data->value_views = nullptr;
+    
+    memcpy(data->keys_buffer, startKey.data(), startKey.size());
+    
+    data->key_views[0].offset = 0;
+    data->key_views[0].length = startKey.size();
+    
+    this->size = 1;
     this->valid = true;
     this->timestamp = 0;
     this->subrange_view_start_pos = -1;

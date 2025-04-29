@@ -105,7 +105,7 @@ public:
     /**
      * Get a new ContRange cache iterator.
      */
-    virtual ContRangeCacheIterator* newRangeCacheIterator() const = 0;
+    virtual ContRangeCacheIterator* newContRangeCacheIterator() const = 0;
 
 protected:
     friend class ContRangeCacheIterator;

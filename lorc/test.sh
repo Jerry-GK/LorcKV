@@ -12,7 +12,7 @@ if [ "$mode" != "run" ] && [ "$mode" != "debug" ] && [ "$mode" != "profile" ]; t
 fi
 
 # compile 
-make -j$(nproc)
+make clean && make -j$(nproc)
 make cleanObjects
 
 # run

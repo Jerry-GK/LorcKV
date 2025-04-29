@@ -165,7 +165,7 @@ public:
     /**
      * Get a new VecRange cache iterator.
      */
-    virtual VecRangeCacheIterator* newRangeCacheIterator() const = 0;
+    virtual VecRangeCacheIterator* newVecRangeCacheIterator() const = 0;
 
 protected:
     friend class VecRangeCacheIterator;

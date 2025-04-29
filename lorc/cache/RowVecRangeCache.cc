@@ -6,15 +6,15 @@
 #include <climits>
 #include "RowVecRangeCache.h"
 
-RowRangeCache::RowRangeCache(int max_size)
+RowVecRangeCache::RowVecRangeCache(int max_size)
     : LogicallyOrderedVecRangeCache(max_size) {
 }
 
-RowRangeCache::~RowRangeCache() {
+RowVecRangeCache::~RowVecRangeCache() {
     row_map.clear();
 }
 
-void RowRangeCache::putRange(VecRange&& newRange) {
+void RowVecRangeCache::putRange(VecRange&& newRange) {
     std::chrono::high_resolution_clock::time_point start_time;
     if (this->enable_statistic) {
         start_time = std::chrono::high_resolution_clock::now();
@@ -46,7 +46,7 @@ void RowRangeCache::putRange(VecRange&& newRange) {
     }
 }
 
-CacheResult RowRangeCache::getRange(const std::string& start_key, const std::string& end_key) {
+CacheResult RowVecRangeCache::getRange(const std::string& start_key, const std::string& end_key) {
     std::chrono::high_resolution_clock::time_point start_time;
     if (this->enable_statistic) {
         start_time = std::chrono::high_resolution_clock::now();
@@ -82,7 +82,7 @@ CacheResult RowRangeCache::getRange(const std::string& start_key, const std::str
     increaseFullQueryCount();
     increaseQuerySize(std::stoi(end_key) - std::stoi(start_key) + 1);
 
-    // no partial hit for RowRangeCache
+    // no partial hit for RowVecRangeCache
 
     if (this->enable_statistic) {
         auto end_time = std::chrono::high_resolution_clock::now();
@@ -94,7 +94,7 @@ CacheResult RowRangeCache::getRange(const std::string& start_key, const std::str
     return result;
 }
 
-void RowRangeCache::victim() {
+void RowVecRangeCache::victim() {
     // Evict the shortest VecRange to minimize impact
     if (this->current_size <= this->max_size) {
         return;

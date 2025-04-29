@@ -4,17 +4,17 @@
 #include <iomanip>
 #include "SegmentedVecRangeCache.h"
 
-SegmentedRangeCache::SegmentedRangeCache(int max_size)
+SegmentedVecRangeCache::SegmentedVecRangeCache(int max_size)
     : LogicallyOrderedVecRangeCache(max_size) {
     entries = std::vector<SegmentedRangeCacheEntry>();
     cache_timestamp = 0;
 }
 
-SegmentedRangeCache::~SegmentedRangeCache() {
+SegmentedVecRangeCache::~SegmentedVecRangeCache() {
     entries.clear();
 }
 
-void SegmentedRangeCache::putRange(VecRange&& newRange) {
+void SegmentedVecRangeCache::putRange(VecRange&& newRange) {
     std::chrono::high_resolution_clock::time_point start_time;
     if (this->enable_statistic) {
         start_time = std::chrono::high_resolution_clock::now();
@@ -120,7 +120,7 @@ void SegmentedRangeCache::putRange(VecRange&& newRange) {
     }
 }
 
-CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const std::string& end_key) {
+CacheResult SegmentedVecRangeCache::getRange(const std::string& start_key, const std::string& end_key) {
     std::chrono::high_resolution_clock::time_point start_time;
     if (this->enable_statistic) {
         start_time = std::chrono::high_resolution_clock::now();
@@ -168,7 +168,7 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
     return result;
 }
 
-// void SegmentedRangeCache::victim() {
+// void SegmentedVecRangeCache::victim() {
 //     // victim a random VecRange
 //     if (this->current_size <= this->max_size) {
 //         return;
@@ -187,7 +187,7 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
 //     }
 // }
 
-// void SegmentedRangeCache::victim() {
+// void SegmentedVecRangeCache::victim() {
 //     // victim the LRU VecRange
 //     if (this->current_size <= this->max_size) {
 //         return;
@@ -214,7 +214,7 @@ CacheResult SegmentedRangeCache::getRange(const std::string& start_key, const st
 //     }
 // }
 
-void SegmentedRangeCache::victim() {
+void SegmentedVecRangeCache::victim() {
     // Remove the shortest VecRange to make space
     if (this->current_size <= this->max_size) {
         return;
@@ -244,7 +244,7 @@ void SegmentedRangeCache::victim() {
     }
 }
 
-// void SegmentedRangeCache::victim() {
+// void SegmentedVecRangeCache::victim() {
 //     // victim the longest VecRange
 //     if (this->current_size <= this->max_size) {
 //         return;
@@ -271,7 +271,7 @@ void SegmentedRangeCache::victim() {
 //     }
 // }
 
-void SegmentedRangeCache::pinRange(int index) {
+void SegmentedVecRangeCache::pinRange(int index) {
     assert(index >= 0 && index < entries.size());
     entries[index].timestamp = this->cache_timestamp++;
 }

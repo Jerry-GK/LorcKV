@@ -4,12 +4,12 @@
 #include <string>
 #include "VecRangeCacheIterator.h"
 
-class RBTreeRangeCache;
+class RBTreeVecRangeCache;
 class VecRange;
 
 class RBTreeVecRangeCacheIterator : public VecRangeCacheIterator {
 public:
-    explicit RBTreeVecRangeCacheIterator(const RBTreeRangeCache* cache);
+    explicit RBTreeVecRangeCacheIterator(const RBTreeVecRangeCache* cache);
     
     ~RBTreeVecRangeCacheIterator() override;
     bool Valid() const override;
@@ -25,7 +25,7 @@ public:
     std::string status() const override;
 
 private:
-    const RBTreeRangeCache* cache;
+    const RBTreeVecRangeCache* cache;
     std::set<VecRange>::const_iterator current_range;
     int current_index;
     std::string status_str;

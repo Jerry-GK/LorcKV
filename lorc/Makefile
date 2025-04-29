@@ -35,5 +35,8 @@ cleanObjects:
 cleanTarget:
 	rm -f $(TARGET)
 
+clean:
+	rm -f $(OBJS) $(TARGET)
+
 # ÉùÃ÷Î±Ä¿±ê
 .PHONY: all clean

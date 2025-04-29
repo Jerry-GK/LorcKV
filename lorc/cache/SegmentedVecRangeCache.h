@@ -10,10 +10,10 @@ class SegmentedRangeCacheEntry;
  * A cache implementation that stores and manages ranges in segments.
  * It supports VecRange-based operations and maintains logical ordering of entries.
  */
-class SegmentedRangeCache : public LogicallyOrderedVecRangeCache {
+class SegmentedVecRangeCache : public LogicallyOrderedVecRangeCache {
 public:
-    SegmentedRangeCache(int max_size);
-    ~SegmentedRangeCache() override;
+    SegmentedVecRangeCache(int max_size);
+    ~SegmentedVecRangeCache() override;
 
     void putRange(VecRange&& VecRange) override;
 
@@ -48,7 +48,7 @@ public:
         return timestamp;
     }
 
-    friend class SegmentedRangeCache;
+    friend class SegmentedVecRangeCache;
 
 private:
     VecRange vec_range;  // ¸ÄÃûÎª vec_range

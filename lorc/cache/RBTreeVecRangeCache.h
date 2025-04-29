@@ -11,19 +11,19 @@ class RBTreeRangeCacheIterator;
 class VecRangeCacheIterator;
 
 /**
- * RBTreeRangeCache: A cache implementation using Red-Black Tree to store VecRange data
+ * RBTreeVecRangeCache: A cache implementation using Red-Black Tree to store VecRange data
  * Uses ordered containers to maintain ranges sorted by their start keys and lengths
  */
-class RBTreeRangeCache : public LogicallyOrderedVecRangeCache {
+class RBTreeVecRangeCache : public LogicallyOrderedVecRangeCache {
 public:
-    RBTreeRangeCache(int max_size);
-    ~RBTreeRangeCache() override;
+    RBTreeVecRangeCache(int max_size);
+    ~RBTreeVecRangeCache() override;
 
     void putRange(VecRange&& VecRange) override;
     CacheResult getRange(const std::string& start_key, const std::string& end_key) override;
     void victim() override;
     
-    VecRangeCacheIterator* newRangeCacheIterator() const override;
+    VecRangeCacheIterator* newVecRangeCacheIterator() const override;
 
     /**
      * Update the timestamp of a VecRange to mark it as recently used.
