@@ -2,7 +2,7 @@
 
 # arg1 = run/profile
 # binName="testVecLORC"
-binName="testContLORC"
+binName="testSliceVecLORC"
 
 mode=$1
 if [ -z "$mode" ]; then
