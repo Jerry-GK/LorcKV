@@ -2,6 +2,8 @@
 
 # arg1 = run/profile
 mode=$1
+task=$2
+
 if [ -z "$mode" ]; then
     echo "Usage: $0 <run|profile>"
     exit 1
@@ -12,29 +14,29 @@ if [ "$mode" != "run" ] && [ "$mode" != "debug" ] && [ "$mode" != "profile" ]; t
 fi
 
 # compile 
-g++ -std=c++17 -g -O2 -fno-omit-frame-pointer -rdynamic test_string.cc -o ./bin/testString
+g++ -std=c++17 -g -O2 -fno-omit-frame-pointer -rdynamic ${task}.cc -o ../bin/${task}
 
 # run
 if [ "$mode" == "run" ]; then
-    ./bin/testLORC
+    ../bin/${task}
 fi
 
 # debug
 if [ "$mode" == "debug" ]; then
-    gdb ./bin/testString
+    gdb ../bin/${task}
 fi
 
 # profile
 if [ "$mode" == "profile" ]; then
     echo "Profiling..."
-    perf record -F 99 --call-graph dwarf -g -o ./profile/profile_Str.data ./bin/testString
+    perf record -F 99 --call-graph dwarf -g -o ../profile/profile_${task}.data ../bin/${task}
 
     # 生成火焰图（需提前安装FlameGraph工具）
-    perf script -i ./profile/profile_Str.data | \
+    perf script -i ../profile/profile_${task}.data | \
     stackcollapse-perf.pl | \
-    flamegraph.pl > ./profile/test_string.svg
-    rm profile/profile_Str.data
+    flamegraph.pl > ../profile/${task}.svg
+    rm p../rofile/profile_${task}.data
 fi
 
 # clean
-rm bin/testString
+# rm ../bin/${task}

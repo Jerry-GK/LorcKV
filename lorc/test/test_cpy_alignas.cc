@@ -6,11 +6,13 @@
 #include <memory>
 #include <iomanip>
 #include <algorithm>
+#include <cstdlib>  // 为aligned_alloc添加头文件
 
 // Continuous storage structure for strings
 class ContinuousStorage {
 private:
-    char* data;
+    static constexpr size_t ALIGNMENT = 64;  // 64字节对齐
+    alignas(64) char* data;  // 64字节对齐，匹配常见的缓存行大小
     size_t total_size;
     std::vector<size_t> offsets;
     std::vector<size_t> lengths;
@@ -19,7 +21,7 @@ public:
     ContinuousStorage() : data(nullptr), total_size(0) {}
     
     ~ContinuousStorage() {
-        if (data) delete[] data;
+        if (data) std::free(data);  // 使用free替代delete[]
     }
     
     // Calculate total required size and allocate memory
@@ -37,9 +39,13 @@ public:
             total_size += s.length();
         }
         
-        data = new char[total_size];
-        // preheat
-        memset(data, 0, total_size);
+        // 计算对齐后的总大小
+        size_t aligned_size = (total_size + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
+        // 使用aligned_alloc分配对齐内存
+        data = static_cast<char*>(aligned_alloc(ALIGNMENT, aligned_size));
+        if (!data) {
+            throw std::bad_alloc();
+        }
     }
     
     // Copy strings into continuous storage
@@ -119,9 +125,6 @@ double test_contiguous_to_contiguous(const ContinuousStorage& source, Continuous
 
     // 直接复制整块连续内存
     // memcpy(const_cast<char*>(target.get_data()), source.get_data(), source.get_total_size());
-
-    // memset test
-    // memset(const_cast<char*>(target.get_data()), 6, source.get_total_size());
     
     auto end = std::chrono::high_resolution_clock::now();
     return std::chrono::duration<double>(end - start).count();
