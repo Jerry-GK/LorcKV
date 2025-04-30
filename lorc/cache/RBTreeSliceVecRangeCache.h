@@ -20,6 +20,7 @@ public:
     ~RBTreeSliceVecRangeCache() override;
 
     void putRange(SliceVecRange&& SliceVecRange) override;
+    bool updateEntry(const Slice& key, const Slice& value) override;
     void victim() override;
     
     SliceVecRangeCacheIterator* newSliceVecRangeCacheIterator() const override;

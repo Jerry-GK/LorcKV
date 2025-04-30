@@ -60,6 +60,8 @@ public:
     int getTimestamp() const;
     void setTimestamp(int timestamp) const;
 
+    bool update(const Slice& key, const Slice& value) const;
+
     // the origin SliceVecRange will be invalid after this operation (turn to a temp subrange view only for concatRangesMoved)
     SliceVecRange subRangeView(size_t start_index, size_t end_index) const;
 

@@ -118,6 +118,18 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
     }
 }
 
+bool RBTreeSliceVecRangeCache::updateEntry(const Slice& key, const Slice& value) {
+    // Update the entry in the SliceVecRange
+    auto it = orderedRanges.upper_bound(SliceVecRange(key));
+    if (it == orderedRanges.begin()) {
+        it--;
+    }
+    if (it == orderedRanges.end() || it->startKey() > key || it->endKey() < key) {
+        return false;
+    }
+    return it->update(key, value);
+}
+
 void RBTreeSliceVecRangeCache::victim() {
     // Evict the shortest SliceVecRange to minimize impact
     if (this->current_size <= this->max_size) {

@@ -65,6 +65,12 @@ public:
     virtual void putRange(SliceVecRange&& SliceVecRange) = 0;
 
     /**
+     * Update an entry in existing ranges
+     * Return false if the key is not found
+     */
+    virtual bool updateEntry(const Slice& key, const Slice& value) = 0;
+
+    /**
      * Remove or truncate entries to maintain cache size within limits.
      */
     virtual void victim() = 0;

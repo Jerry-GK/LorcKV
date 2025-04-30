@@ -150,6 +150,16 @@ void SliceVecRange::setTimestamp(int timestamp) const {
     this->timestamp = timestamp;
 }
 
+bool SliceVecRange::update(const Slice& key, const Slice& value) const {
+    assert(valid && size > 0 && subrange_view_start_pos == -1);    
+    int index = find(key);
+    if (index >= 0 && keyAt(index) == key) {
+        data->values[index] = value.ToString();
+        return true;
+    }
+    return false;
+}
+
 SliceVecRange SliceVecRange::subRangeView(size_t start_index, size_t end_index) const {
     assert(valid && size > end_index && start_index >= 0 && subrange_view_start_pos == -1);
     // the only code to create non-negative subrange_view_start_pos
