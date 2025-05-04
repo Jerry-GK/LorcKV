@@ -20,8 +20,9 @@ const int key_size = std::to_string(end_key).length();
 const int value_size = 4096;
 const double cache_size_ratio = 0.25;
 
-const int min_range_len = 1;
 const int max_range_len = num_keys_level * 10 * 0.01;
+// const int min_range_len = 1;
+const int min_range_len = max_range_len;
 const int num_queries = 5000;
 
 const bool enable_logger = true;

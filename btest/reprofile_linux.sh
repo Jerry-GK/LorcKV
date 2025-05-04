@@ -19,7 +19,7 @@ fi
 export LD_LIBRARY_PATH=$build_dir:$LD_LIBRARY_PATH
 
 # 编译命令保持不变（根据实际需求调整参数）
-g++ -g -O2 -fno-omit-frame-pointer -std=c++17 -I../include -L$build_dir \
+g++ -std=c++17 -g -O2 -fno-omit-frame-pointer -rdynamic -I../include -L$build_dir \
     -o ./bin/${filename} ./code/${filename}.cc -lrocksdb -lpthread -lz -lbz2
 
 # 设置perf输出文件名

@@ -12,7 +12,8 @@ fi
 
 export LD_LIBRARY_PATH=$build_dir:$LD_LIBRARY_PATH
 
-g++ -std=c++17 -I../include -L$build_dir -o ./bin/${filename} ./code/${filename}.cc -lrocksdb -lpthread -lz -lbz2
+g++ -std=c++17 -g -O2 -fno-omit-frame-pointer -rdynamic -I../include -L$build_dir \
+    -o ./bin/${filename} ./code/${filename}.cc -lrocksdb -lpthread -lz -lbz2
 
 ./bin/${filename}
 
