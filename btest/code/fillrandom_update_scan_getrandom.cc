@@ -14,6 +14,14 @@ using namespace chrono;
 #define KEY_LEN 24
 #define VALUE_LEN 4096
 
+bool do_create = false;
+bool do_scan = true;
+bool do_get = false;
+bool do_update = false;
+
+bool enable_blob = true;
+size_t cache_size = 8 * 1024 * 1024; // 8MB
+
 const int start_key = 100000; // 起始键
 const int end_key = 999999;   // 结束键
 
@@ -81,21 +89,43 @@ void execute_scan(DB* db) {
     auto start = high_resolution_clock::now();
     Iterator* it = db->NewIterator(ReadOptions());
     vector<string> v;
-    v.reserve(1000000);
+    v.reserve(end_key - start_key + 1);
+    // v.resize(end_key - start_key + 1);
+    // for (int i = 0; i < v.size(); ++i) {
+    //     v[i].resize(VALUE_LEN);
+    // }
+    
+    // 添加ToString计时
+    duration<double> toString_time(0);
+
+    int i = 0;
     for (it->SeekToFirst(); it->Valid(); it->Next()) {
         std::string key = it->key().ToString();
+        
+        // 计时开始
+        auto toString_start = high_resolution_clock::now();
         std::string value = it->value().ToString();
-        // 无需处理结果
+
         v.emplace_back(std::move(value));
+        auto toString_end = high_resolution_clock::now();
+        // memcpy(&v[i][0], value.c_str(), value.length());
+        // auto toString_end = high_resolution_clock::now();
+
+        // 累加时间
+        toString_time += duration_cast<duration<double>>(toString_end - toString_start);
+        ++i;
     }
 
-    if (v[50000] == "") {
-        cout << "avoid opt" << endl;
+    if (v.size() != end_key - start_key + 1) {
+        std::cout << "v.size = " << v.size() << std::endl;
+        assert(false);
     }
+
     delete it;
     auto end = high_resolution_clock::now();
     duration<double> time_span = duration_cast<duration<double>>(end - start);
     cout << "Scan time: " << time_span.count() << " seconds" << endl;
+    cout << "ToString time: " << toString_time.count() << " seconds" << endl;
 }
 
 void execute_get(DB* db) {
@@ -115,14 +145,25 @@ void execute_get(DB* db) {
 
 int main() {
     // 设置数据库路径
-    string db_path = "./db/test_db";
+    string db_path = enable_blob ? "./db/test_db_blobdb" : "./db/test_db_rocksdb";
 
     // 创建数据库选项
     Options options;
-    options.create_if_missing = true;
+    options.create_if_missing = do_create;
+
+    options.enable_blob_files = enable_blob; 
+    if (enable_blob) {
+        options.min_blob_size = 512;                
+        options.blob_file_size = 64 * 1024 * 1024;  
+        options.enable_blob_garbage_collection = true;
+        options.blob_garbage_collection_age_cutoff = 0.25;
+    }
+
+    // auto blob_cache = rocksdb::NewLRUCache(8 * 1024 * 1024); 
+    // options.blob_cache = blob_cache;
 
     // 8MB
-    auto cache = NewLRUCache(8 * 1024 * 1024); // 8MB的LRU缓存
+    auto cache = NewLRUCache(cache_size); // 8MB的LRU缓存
     BlockBasedTableOptions table_options;
     table_options.block_cache = cache;
     auto table_factory = NewBlockBasedTableFactory(table_options);
@@ -137,28 +178,32 @@ int main() {
         return 1;
     }
 
-    // 生成所有键值对并存储在vector中
-    for (int i = start_key; i <= end_key; ++i) {
-        std::string key = gen_key(i);
-        // value = 10 * 
-        std::string value = gen_value(i);
-        keyValuePairs.emplace_back(key, value);
-    }
-
     // 使用随机数生成器生成随机顺序
     std::random_device rd;
     std::mt19937 rng(rd());
-    std::shuffle(keyValuePairs.begin(), keyValuePairs.end(), rng);
+    if (do_create) {
+    // 生成所有键值对并存储在vector中
+        for (int i = start_key; i <= end_key; ++i) {
+            std::string key = gen_key(i);
+            // value = 10 * 
+            std::string value = gen_value(i);
+            keyValuePairs.emplace_back(key, value);
+        }
 
-    execute_insert(db);
+        std::shuffle(keyValuePairs.begin(), keyValuePairs.end(), rng);
 
-    execute_scan(db);
+        execute_insert(db);
+    }
 
-    // shuffle again to get random keys for querying
-    std::shuffle(keyValuePairs.begin(), keyValuePairs.end(), rng);
+    if (do_scan) {
+        execute_scan(db);
+    }
 
-
-    execute_get(db);
+    if (do_get) {
+        // shuffle again to get random keys for querying
+        std::shuffle(keyValuePairs.begin(), keyValuePairs.end(), rng);
+        execute_get(db);
+    }
 
     // 关闭数据库
     delete db;

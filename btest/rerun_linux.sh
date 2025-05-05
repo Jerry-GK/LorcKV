@@ -17,4 +17,4 @@ g++ -std=c++17 -g -O2 -fno-omit-frame-pointer -rdynamic -I../include -L$build_di
 
 ./bin/${filename}
 
-du -sh db/test_db
+du -sh db/*db*

@@ -3,7 +3,6 @@
 filename=$1
 mode=${2:-"release"}
 postfix=${3:-""}
-profile_time=300
 
 # 构建目录判断
 if [ "$mode" == "debug" ]; then
@@ -26,7 +25,7 @@ g++ -std=c++17 -g -O2 -fno-omit-frame-pointer -rdynamic -I../include -L$build_di
 profile_filename=${filename}${postfix:+_$postfix}
 
 # 使用perf进行性能采样（需root权限或配置perf权限）
-perf record -F 99 -g -o ./profile/${profile_filename}.data ./bin/${filename}
+perf record -F 99 --call-graph dwarf -g -o ./profile/${profile_filename}.data ./bin/${filename}
 
 # 生成火焰图（需提前安装FlameGraph工具）
 perf script -i ./profile/${profile_filename}.data | \
@@ -36,4 +35,4 @@ perf script -i ./profile/${profile_filename}.data | \
 # 清理中间文件
 rm -f ./profile/${profile_filename}.data
 
-du -sh db/test_db
+du -sh db/*db*
