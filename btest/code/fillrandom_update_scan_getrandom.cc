@@ -6,6 +6,7 @@
 #include "rocksdb/options.h"
 #include "rocksdb/iterator.h"
 #include "rocksdb/table.h"
+#include "rocksdb/vec_lorc.h"
 
 using namespace std;
 using namespace rocksdb;
@@ -19,11 +20,23 @@ bool do_scan = true;
 bool do_get = false;
 bool do_update = false;
 
-bool enable_blob = true;
-size_t cache_size = 8 * 1024 * 1024; // 8MB
+bool enable_blob = false;
+bool enable_lorc = true;
 
-const int start_key = 100000; // 起始键
-const int end_key = 999999;   // 结束键
+// size_t block_cache_size = 0; // 0MB
+// size_t block_cache_size = 32 * 1024 * 1024; // 32MB
+// size_t block_cache_size = 1024 * 1024 * 1024; // 1GB
+size_t block_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
+
+// size_t blob_cache_size = 0; // 0MB
+// size_t blob_cache_size = 8 * 1024 * 1024; // 32MB
+// size_t blob_cache_size = 1024 * 1024 * 1024; // 1GB
+size_t blob_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
+
+size_t range_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
+
+const int start_key = 100000; // Start key for range
+const int end_key = 999999;   // End key for range
 
 std::vector<std::pair<std::string, std::string>> keyValuePairs;
 Status status;
@@ -65,7 +78,7 @@ std::string gen_value(int key) {
 
 void execute_insert(DB* db) {
     auto start = high_resolution_clock::now();
-    // 按随机顺序插入
+    // Insert key-value pairs into database
     for (const auto& pair : keyValuePairs) {
         const std::string& key = pair.first;
         const std::string& value = pair.second;
@@ -90,28 +103,22 @@ void execute_scan(DB* db) {
     Iterator* it = db->NewIterator(ReadOptions());
     vector<string> v;
     v.reserve(end_key - start_key + 1);
-    // v.resize(end_key - start_key + 1);
-    // for (int i = 0; i < v.size(); ++i) {
-    //     v[i].resize(VALUE_LEN);
-    // }
     
-    // 添加ToString计时
+    // Time tracking for ToString operations
     duration<double> toString_time(0);
 
     int i = 0;
     for (it->SeekToFirst(); it->Valid(); it->Next()) {
         std::string key = it->key().ToString();
         
-        // 计时开始
+        // Start timing
         auto toString_start = high_resolution_clock::now();
         std::string value = it->value().ToString();
 
         v.emplace_back(std::move(value));
         auto toString_end = high_resolution_clock::now();
-        // memcpy(&v[i][0], value.c_str(), value.length());
-        // auto toString_end = high_resolution_clock::now();
 
-        // 累加时间
+        // Accumulate timing
         toString_time += duration_cast<duration<double>>(toString_end - toString_start);
         ++i;
     }
@@ -143,33 +150,50 @@ void execute_get(DB* db) {
     cout << "Get time: " << time_span.count() << " seconds" << endl;
 }
 
+// for test
+void execute_scan_cold(DB* db) {
+    execute_scan(db);
+}
+
+void execute_scan_hot(DB* db) {
+    execute_scan(db);
+}
+
 int main() {
-    // 设置数据库路径
+    // Set database path based on blob flag
     string db_path = enable_blob ? "./db/test_db_blobdb" : "./db/test_db_rocksdb";
 
-    // 创建数据库选项
+    // Configure database options
     Options options;
     options.create_if_missing = do_create;
 
-    options.enable_blob_files = enable_blob; 
+    // Configure blob settings if enabled
+    options.enable_blob_files = enable_blob;
+    std::shared_ptr<Cache> blob_cache = nullptr;
     if (enable_blob) {
         options.min_blob_size = 512;                
         options.blob_file_size = 64 * 1024 * 1024;  
         options.enable_blob_garbage_collection = true;
         options.blob_garbage_collection_age_cutoff = 0.25;
+        blob_cache = rocksdb::NewLRUCache(blob_cache_size); 
+        options.blob_cache = blob_cache;
     }
 
-    // auto blob_cache = rocksdb::NewLRUCache(8 * 1024 * 1024); 
-    // options.blob_cache = blob_cache;
+    // Configure LORC if enabled
+    std::shared_ptr<LogicallyOrderedSliceVecRangeCache> lorc = nullptr;
+    if (enable_lorc) {
+        lorc = rocksdb::NewRangeCache(range_cache_size);
+        options.range_cache = lorc;
+    }
 
-    // 8MB
-    auto cache = NewLRUCache(cache_size); // 8MB的LRU缓存
+    // Configure block cache
+    auto block_cache = NewLRUCache(block_cache_size);
     BlockBasedTableOptions table_options;
-    table_options.block_cache = cache;
+    table_options.block_cache = block_cache;
     auto table_factory = NewBlockBasedTableFactory(table_options);
     options.table_factory.reset(table_factory);
 
-    // 打开数据库
+    // Open database
     DB* db;
     status = DB::Open(options, db_path, &db);
 
@@ -178,11 +202,13 @@ int main() {
         return 1;
     }
 
-    // 使用随机数生成器生成随机顺序
+    // Use random generator for key order
     std::random_device rd;
     std::mt19937 rng(rd());
+    
+    // Create and populate database if required
     if (do_create) {
-    // 生成所有键值对并存储在vector中
+        // Generate key-value pairs and store in vector
         for (int i = start_key; i <= end_key; ++i) {
             std::string key = gen_key(i);
             // value = 10 * 
@@ -195,8 +221,10 @@ int main() {
         execute_insert(db);
     }
 
+    // Execute operations based on flags
     if (do_scan) {
-        execute_scan(db);
+        execute_scan_cold(db);
+        execute_scan_hot(db);
     }
 
     if (do_get) {
@@ -205,7 +233,7 @@ int main() {
         execute_get(db);
     }
 
-    // 关闭数据库
+    // Clean up
     delete db;
 
     return 0;

@@ -32,6 +32,9 @@ CMakeFiles/
 build/
 build_debug/
 build_release/
+build_debug_lorc/
+build_release_lorc/
+
 
 ldb
 manifest_dump

@@ -6,9 +6,9 @@ postfix=${3:-""}
 
 # ¹¹½¨Ä¿Â¼ÅÐ¶Ï
 if [ "$mode" == "debug" ]; then
-    build_dir="../build_debug"
+    build_dir="../build_debug_lorc"
 elif [ "$mode" == "release" ]; then
-    build_dir="../build_release"
+    build_dir="../build_release_lorc"
 else
     echo "Invalid mode. Please specify 'debug' or 'release'."
     exit 1

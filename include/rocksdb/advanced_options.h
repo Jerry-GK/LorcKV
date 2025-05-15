@@ -14,6 +14,7 @@
 #include "rocksdb/compression_type.h"
 #include "rocksdb/memtablerep.h"
 #include "rocksdb/universal_compaction.h"
+#include "rocksdb/vec_lorc.h"
 
 namespace ROCKSDB_NAMESPACE {
 
@@ -1109,6 +1110,15 @@ struct AdvancedColumnFamilyOptions {
   AdvancedColumnFamilyOptions();
   // Create ColumnFamilyOptions from Options
   explicit AdvancedColumnFamilyOptions(const Options& options);
+
+  // The cache for range queries. It is used to cache the results of
+  // range queries. The cache is used to speed up the range queries
+  // by avoiding the need to read the data from the underlying
+  // storage.
+  // It's a logical cache, not a physical one. Access needs an iterator between (imm)memtables and L0+ files.
+  //
+  // Default: nullptr (disabled)
+  std::shared_ptr<LogicallyOrderedSliceVecRangeCache> range_cache = nullptr;
 
   // ---------------- OPTIONS NOT SUPPORTED ANYMORE ----------------
 };

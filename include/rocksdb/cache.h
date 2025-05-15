@@ -19,6 +19,7 @@
 #include "rocksdb/compression_type.h"
 #include "rocksdb/data_structure.h"
 #include "rocksdb/memory_allocator.h"
+#include "rocksdb/vec_lorc.h"
 
 namespace ROCKSDB_NAMESPACE {
 
@@ -576,4 +577,9 @@ Status UpdateTieredCache(
     const std::shared_ptr<Cache>& cache, int64_t total_capacity = -1,
     double compressed_secondary_ratio = std::numeric_limits<double>::max(),
     TieredAdmissionPolicy adm_policy = TieredAdmissionPolicy::kAdmPolicyMax);
-}  // namespace ROCKSDB_NAMESPACE
+
+// Range Cache (lorc)
+inline std::shared_ptr<LogicallyOrderedSliceVecRangeCache> NewRangeCache(size_t capacity) {
+return nullptr;
+}  
+}// namespace ROCKSDB_NAMESPACE

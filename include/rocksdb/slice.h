@@ -280,6 +280,22 @@ inline bool operator==(const Slice& x, const Slice& y) {
 
 inline bool operator!=(const Slice& x, const Slice& y) { return !(x == y); }
 
+inline bool operator<(const Slice& x, const Slice& y) {
+  return (x.compare(y) < 0);
+}
+
+inline bool operator>(const Slice& x, const Slice& y) {
+  return (x.compare(y) > 0);
+}
+
+inline bool operator<=(const Slice& x, const Slice& y) {
+  return (x.compare(y) <= 0);
+}
+
+inline bool operator>=(const Slice& x, const Slice& y) {
+  return (x.compare(y) >= 0);
+}
+
 inline int Slice::compare(const Slice& b) const {
   assert(data_ != nullptr && b.data_ != nullptr);
   const size_t min_len = (size_ < b.size_) ? size_ : b.size_;
