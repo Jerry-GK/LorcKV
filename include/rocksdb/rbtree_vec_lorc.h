@@ -17,7 +17,7 @@ class SliceVecRangeCacheIterator;
  */
 class RBTreeSliceVecRangeCache : public LogicallyOrderedSliceVecRangeCache {
 public:
-    RBTreeSliceVecRangeCache(int max_size);
+    RBTreeSliceVecRangeCache(size_t capacity);
     ~RBTreeSliceVecRangeCache() override;
 
     void putRange(SliceVecRange&& SliceVecRange) override;

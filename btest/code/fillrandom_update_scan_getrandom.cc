@@ -7,6 +7,7 @@
 #include "rocksdb/iterator.h"
 #include "rocksdb/table.h"
 #include "rocksdb/vec_lorc.h"
+#include "rocksdb/vec_range.h"
 
 using namespace std;
 using namespace rocksdb;
@@ -20,7 +21,7 @@ bool do_scan = true;
 bool do_get = false;
 bool do_update = false;
 
-bool enable_blob = false;
+bool enable_blob = true;
 bool enable_lorc = true;
 
 // size_t block_cache_size = 0; // 0MB
@@ -28,10 +29,10 @@ bool enable_lorc = true;
 // size_t block_cache_size = 1024 * 1024 * 1024; // 1GB
 size_t block_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
 
-// size_t blob_cache_size = 0; // 0MB
+size_t blob_cache_size = 0; // 0MB
 // size_t blob_cache_size = 8 * 1024 * 1024; // 32MB
 // size_t blob_cache_size = 1024 * 1024 * 1024; // 1GB
-size_t blob_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
+// size_t blob_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
 
 size_t range_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
 
@@ -76,7 +77,7 @@ std::string gen_value(int key) {
     return value_str;
 }
 
-void execute_insert(DB* db) {
+void execute_insert(DB* db, Options options) {
     auto start = high_resolution_clock::now();
     // Insert key-value pairs into database
     for (const auto& pair : keyValuePairs) {
@@ -98,34 +99,53 @@ void execute_insert(DB* db) {
     cout << "Insert time: " << time_span.count() << " seconds" << endl;
 }
 
-void execute_scan(DB* db) {
+void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int len = -1) {
     auto start = high_resolution_clock::now();
+    if (len == -1) {
+        len = end_key - start_key + 1;
+    }
     Iterator* it = db->NewIterator(ReadOptions());
-    vector<string> v;
-    v.reserve(end_key - start_key + 1);
+    SliceVecRange slice_vec_range(true);
+    slice_vec_range.reserve(len);
     
     // Time tracking for ToString operations
     duration<double> toString_time(0);
 
     int i = 0;
-    for (it->SeekToFirst(); it->Valid(); it->Next()) {
+    if (scan_start_key != "" && !scan_start_key.empty()) {
+        it->Seek(scan_start_key);
+    } else {
+        it->SeekToFirst();
+    }
+    for (; it->Valid(); it->Next()) {
         std::string key = it->key().ToString();
         
         // Start timing
         auto toString_start = high_resolution_clock::now();
         std::string value = it->value().ToString();
-
-        v.emplace_back(std::move(value));
         auto toString_end = high_resolution_clock::now();
 
         // Accumulate timing
         toString_time += duration_cast<duration<double>>(toString_end - toString_start);
-        ++i;
+       
+        if (enable_lorc) {
+            slice_vec_range.emplaceMoved(key, value);
+        }
+        
+        // std::cout << i << ": " << key  << std::endl;
+        if (++i >= len) {
+            break;
+        }
     }
 
-    if (v.size() != end_key - start_key + 1) {
-        std::cout << "v.size = " << v.size() << std::endl;
+    if (enable_lorc && slice_vec_range.length() != (size_t)len) {
+        std::cout << "slice_vec_range.size = " << slice_vec_range.length() << std::endl;
         assert(false);
+    }
+
+    // lorc put range
+    if (enable_lorc) {
+        options.range_cache->putRange(std::move(slice_vec_range)); 
     }
 
     delete it;
@@ -135,7 +155,7 @@ void execute_scan(DB* db) {
     cout << "ToString time: " << toString_time.count() << " seconds" << endl;
 }
 
-void execute_get(DB* db) {
+void execute_get(DB* db, Options options) {
     auto start = high_resolution_clock::now();
     for (const auto& pair : keyValuePairs) {
         const std::string &key = pair.first;
@@ -151,12 +171,14 @@ void execute_get(DB* db) {
 }
 
 // for test
-void execute_scan_cold(DB* db) {
-    execute_scan(db);
+void execute_scan_cold(DB* db, Options options) {
+    std::cout << "\nExecuting cold scan..." << std::endl;
+    execute_scan(db, options);
 }
 
-void execute_scan_hot(DB* db) {
-    execute_scan(db);
+void execute_scan_hot(DB* db, Options options) {
+    std::cout << "\nExecuting hot scan..." << std::endl;
+    execute_scan(db, options);
 }
 
 int main() {
@@ -218,19 +240,19 @@ int main() {
 
         std::shuffle(keyValuePairs.begin(), keyValuePairs.end(), rng);
 
-        execute_insert(db);
+        execute_insert(db, options);
     }
 
     // Execute operations based on flags
     if (do_scan) {
-        execute_scan_cold(db);
-        execute_scan_hot(db);
+        execute_scan_cold(db, options);
+        execute_scan_hot(db, options);
     }
 
     if (do_get) {
         // shuffle again to get random keys for querying
         std::shuffle(keyValuePairs.begin(), keyValuePairs.end(), rng);
-        execute_get(db);
+        execute_get(db, options);
     }
 
     // Clean up

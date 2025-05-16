@@ -19,7 +19,7 @@ bool RBTreeSliceVecRangeCacheIterator::HasNextInRange() const {
     if (!valid) {
         return false;
     }
-    return (size_t)current_index + 1 < current_range->getSize();
+    return (size_t)current_index + 1 < current_range->length();
 }
 
 void RBTreeSliceVecRangeCacheIterator::SeekToFirst() {
@@ -50,7 +50,7 @@ void RBTreeSliceVecRangeCacheIterator::SeekToLast() {
         return;
     }
     current_range = std::prev(cache->orderedRanges.end());
-    current_index = current_range->getSize() - 1;
+    current_index = current_range->length() - 1;
     valid = true;
 }
 
@@ -99,7 +99,7 @@ void RBTreeSliceVecRangeCacheIterator::SeekForPrev(const Slice& target) {
     if (current_range != cache->orderedRanges.end() && current_range->endKey() >= target) {
         current_index = current_range->find(target);
         if (current_index == -1) {
-            current_index = current_range->getSize() - 1;
+            current_index = current_range->length() - 1;
         }
         valid = true;
     } else {
@@ -113,7 +113,7 @@ void RBTreeSliceVecRangeCacheIterator::Next() {
         return;
     }
     
-    if ((size_t)current_index < current_range->getSize() - 1) {
+    if ((size_t)current_index < current_range->length() - 1) {
         current_index++;
     } else {
         ++current_range;
@@ -139,7 +139,7 @@ void RBTreeSliceVecRangeCacheIterator::Prev() {
             valid = false;
         } else {
             --current_range;
-            current_index = current_range->getSize() - 1;
+            current_index = current_range->length() - 1;
         }
     }
 }

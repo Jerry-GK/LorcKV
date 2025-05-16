@@ -19,7 +19,8 @@ private:
         std::vector<std::string> values;
     };
     std::shared_ptr<RangeData> data;
-    mutable size_t size;
+    mutable size_t range_length; // size in length
+    mutable size_t byte_size; // size in bytes
     mutable bool valid;
     mutable int timestamp;
 
@@ -28,13 +29,12 @@ private:
 
     private:
     // construct by data pointer and subrange_view_start_pos, it's a subrange view if subrange_view_start_pos >= 0
-    SliceVecRange(std::shared_ptr<RangeData> data, int subrange_view_start_pos, size_t size);
+    SliceVecRange(std::shared_ptr<RangeData> data, int subrange_view_start_pos, size_t length);
 
 public:
     SliceVecRange(bool valid = false);
     ~SliceVecRange();      
     // create from string vector
-    // SliceVecRange(std::vector<std::string>&& keys, std::vector<std::string>&& values, size_t size);
     // create a SliceVecRange with a single key-value pair, used for seekx
     SliceVecRange(Slice startKey);
     // deep copy
@@ -47,8 +47,11 @@ public:
     // reserve the range
     void reserve(size_t len);
 
-    // empalce a key-value pair copy
+    // empalce a key-value pair Slice copy
     void emplace(const Slice& key, const Slice& value);
+
+    // empalce a key-value pair string in a moved pattern
+    void emplaceMoved(std::string& key, std::string& value);
 
     Slice startKey() const;
     Slice endKey() const;
@@ -56,7 +59,8 @@ public:
     Slice keyAt(size_t index) const;
     Slice valueAt(size_t index) const;
 
-    size_t getSize() const;
+    size_t length() const;
+    size_t byteSize() const;
     bool isValid() const;
     int getTimestamp() const;
     void setTimestamp(int timestamp) const;

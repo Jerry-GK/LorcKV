@@ -118,7 +118,7 @@ class SliceVecRangeCacheIterator;
 
 class LogicallyOrderedSliceVecRangeCache {
 public:
-    LogicallyOrderedSliceVecRangeCache(int max_size);
+    LogicallyOrderedSliceVecRangeCache(size_t capacity_);
     virtual ~LogicallyOrderedSliceVecRangeCache();
 
     /**
@@ -179,8 +179,8 @@ public:
 protected:
     friend class SliceVecRangeCacheIterator;
 
-    int max_size;
-    int current_size;
+    size_t capacity;
+    size_t current_size;
 
     bool enable_statistic; // initialize to false
     CacheStatistic cache_statistic;

@@ -5,6 +5,7 @@
 #include "../logger/Logger.h"
 
 SliceVecRange::SliceVecRange(bool valid) {
+    this->data = std::make_shared<RangeData>();
     this->valid = valid;
     this->size = 0;
     this->timestamp = 0;
@@ -235,6 +236,10 @@ SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& range
         }
         size_t len = SliceVecRange.getSize();
         
+        // Using std::make_move_iterator to move strings from source containers to new container
+        // This operation "steals" content from source strings, leaving them as empty strings
+        // Even if source SliceVecRange objects are destroyed later, the moved data is safely transferred
+        // This avoids data copying, improves performance, and ensures proper data lifetime management
         new_data->keys.insert(new_data->keys.end(),
             std::make_move_iterator(src_data->keys.begin() + range_start),
             std::make_move_iterator(src_data->keys.begin() + range_start + len));

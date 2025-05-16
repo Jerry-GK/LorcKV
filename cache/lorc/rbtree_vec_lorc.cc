@@ -8,8 +8,8 @@
 
 namespace ROCKSDB_NAMESPACE {
 
-RBTreeSliceVecRangeCache::RBTreeSliceVecRangeCache(int max_size_)
-    : LogicallyOrderedSliceVecRangeCache(max_size_) {
+RBTreeSliceVecRangeCache::RBTreeSliceVecRangeCache(size_t capacity_)
+    : LogicallyOrderedSliceVecRangeCache(capacity_) {
 }
 
 RBTreeSliceVecRangeCache::~RBTreeSliceVecRangeCache() {
@@ -43,7 +43,7 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
         // Handle left split: if existing SliceVecRange starts before newRange
         if (it->startKey() < newRange.startKey() && it->endKey() >= newRange.startKey()) {
             int leftSplitIdx = it->find(newRange.startKey()) - 1;
-            if (leftSplitIdx >= 0 && (size_t)leftSplitIdx < it->getSize()) {
+            if (leftSplitIdx >= 0 && (size_t)leftSplitIdx < it->length()) {
                 leftRanges.emplace_back(std::move(it->subRangeView(0, leftSplitIdx)));
             }
         }
@@ -51,23 +51,23 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
         // Handle right split: if existing SliceVecRange ends after newRange
         if (it->endKey() > newRange.endKey() && it->startKey() <= newRange.endKey()) {
             int rightSplitIdx = it->find(newRange.endKey());
-            if (rightSplitIdx >= 0 && (size_t)rightSplitIdx < it->getSize() && it->keyAt(rightSplitIdx) == newRange.endKey()) {
+            if (rightSplitIdx >= 0 && (size_t)rightSplitIdx < it->length() && it->keyAt(rightSplitIdx) == newRange.endKey()) {
                 rightSplitIdx++;
             }
-            if (rightSplitIdx >= 0 && (size_t)rightSplitIdx < it->getSize()) {
-                rightRanges.emplace_back(std::move(it->subRangeView(rightSplitIdx, it->getSize() - 1)));
+            if (rightSplitIdx >= 0 && (size_t)rightSplitIdx < it->length()) {
+                rightRanges.emplace_back(std::move(it->subRangeView(rightSplitIdx, it->length() - 1)));
             }
         }
 
         // Remove the old SliceVecRange from both containers
-        auto SliceVecRange = lengthMap.equal_range(it->getSize());
+        auto SliceVecRange = lengthMap.equal_range(it->length());
         for (auto itt = SliceVecRange.first; itt != SliceVecRange.second; ++itt) {
             if (itt->second == it->startKey()) {
                 lengthMap.erase(itt);
                 break;
             }
         }
-        this->current_size -= it->getSize();
+        this->current_size -= it->byteSize();
         it = orderedRanges.erase(it);
     }
     
@@ -77,7 +77,6 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
         return;
     }
     
-    // Reserve space to avoid reallocations
     std::vector<SliceVecRange> mergedRanges;
     mergedRanges.reserve(leftRanges.size() + 1 + rightRanges.size());
     
@@ -93,12 +92,12 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
     SliceVecRange mergedRange = SliceVecRange::concatRangesMoved(mergedRanges);
     
     // Add the new merged SliceVecRange to both containers
-    lengthMap.emplace(mergedRange.getSize(), mergedRange.startKey().ToString());
-    this->current_size += mergedRange.getSize();
+    lengthMap.emplace(mergedRange.length(), mergedRange.startKey().ToString());
+    this->current_size += mergedRange.byteSize();
     orderedRanges.emplace(std::move(mergedRange));
 
     // Trigger eviction if cache size exceeds limit
-    while (this->current_size > this->max_size) {
+    while (this->current_size > this->capacity) {
         this->victim();
     }
 
@@ -117,6 +116,8 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
         this->cache_statistic.increasePutRangeNum();
         this->cache_statistic.increasePutRangeTotalTime(duration.count());
     }
+
+    // ~leftRanges and ~rightRanges
 }
 
 bool RBTreeSliceVecRangeCache::updateEntry(const Slice& key, const Slice& value) {
@@ -133,7 +134,7 @@ bool RBTreeSliceVecRangeCache::updateEntry(const Slice& key, const Slice& value)
 
 void RBTreeSliceVecRangeCache::victim() {
     // Evict the shortest SliceVecRange to minimize impact
-    if (this->current_size <= this->max_size) {
+    if (this->current_size <= this->capacity) {
         return;
     }
     auto victimRangeStartKey = lengthMap.begin()->second;
@@ -146,19 +147,19 @@ void RBTreeSliceVecRangeCache::victim() {
     }
 
     // If multiple ranges exist, remove the victim
-    // If only one SliceVecRange remains, truncate it to fit max_size
-    if (orderedRanges.size() > 1 || this->max_size <= 0) {
+    // If only one SliceVecRange remains, truncate it to fit capacity
+    if (orderedRanges.size() > 1 || this->capacity <= 0) {
         logger.debug("Victim: " + it->toString());
-        this->current_size -= lengthMap.begin()->first;
         orderedRanges.erase(it);    // TODO(jr): background delete
+        this->current_size -= it->byteSize();
         lengthMap.erase(lengthMap.begin());
     } else {
         // Truncate the last remaining SliceVecRange
         logger.debug("Truncate: " + it->toString());
-        lengthMap.erase(lengthMap.find(it->getSize()));
-        it->truncate(this->max_size);
-        lengthMap.emplace(it->getSize(), it->startKey().ToString());
-        this->current_size = it->getSize();
+        lengthMap.erase(lengthMap.find(it->length()));
+        it->truncate(this->capacity);
+        lengthMap.emplace(it->length(), it->startKey().ToString());
+        this->current_size = it->byteSize();
     }
 }
 
