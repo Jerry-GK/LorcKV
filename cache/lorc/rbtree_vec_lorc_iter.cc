@@ -1,16 +1,15 @@
-#include "cache/lorc/rbtree_vec_lorc_iter.h"
-#include "cache/lorc/rbtree_vec_lorc.h"
+#include "rocksdb/rbtree_vec_lorc_iter.h"
+#include "rocksdb/rbtree_vec_lorc.h"
 #include "rocksdb/vec_lorc_iter.h"
 
 namespace ROCKSDB_NAMESPACE {
-namespace lorc {
 
 RBTreeSliceVecRangeCacheIterator::~RBTreeSliceVecRangeCacheIterator() {
     
 }
 
-RBTreeSliceVecRangeCacheIterator::RBTreeSliceVecRangeCacheIterator(const RBTreeSliceVecRangeCache* cache)
-    : cache(cache), valid(false), current_index(-1) {}
+RBTreeSliceVecRangeCacheIterator::RBTreeSliceVecRangeCacheIterator(const RBTreeSliceVecRangeCache* cache_)
+    : cache(cache_), current_index(-1), valid(false) {}
 
 bool RBTreeSliceVecRangeCacheIterator::Valid() const {
     return valid && status_str.empty();
@@ -20,7 +19,7 @@ bool RBTreeSliceVecRangeCacheIterator::HasNextInRange() const {
     if (!valid) {
         return false;
     }
-    return current_index + 1 < current_range->getSize();
+    return (size_t)current_index + 1 < current_range->getSize();
 }
 
 void RBTreeSliceVecRangeCacheIterator::SeekToFirst() {
@@ -114,7 +113,7 @@ void RBTreeSliceVecRangeCacheIterator::Next() {
         return;
     }
     
-    if (current_index < current_range->getSize() - 1) {
+    if ((size_t)current_index < current_range->getSize() - 1) {
         current_index++;
     } else {
         ++current_range;
@@ -165,5 +164,4 @@ std::string RBTreeSliceVecRangeCacheIterator::status() const {
     return this->status_str;
 }
 
-}  // namespace lorc
 }  // namespace ROCKSDB_NAMESPACE

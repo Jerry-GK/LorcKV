@@ -1,13 +1,10 @@
-#include <iostream>
 #include <cassert>
 #include <algorithm> 
 #include "rocksdb/vec_range.h"
-#include "cache/lorc/logger.h"
 
 namespace ROCKSDB_NAMESPACE {
-namespace lorc {
 
-SliceVecRange::SliceVecRange(bool valid) {
+SliceVecRange::SliceVecRange(bool valid_) {
     this->valid = valid;
     this->size = 0;
     this->timestamp = 0;
@@ -68,11 +65,11 @@ SliceVecRange::SliceVecRange(Slice startKey) {
     this->timestamp = 0;
 }
 
-SliceVecRange::SliceVecRange(std::shared_ptr<RangeData> data, int subrange_view_start_pos, size_t size) {
-    this->data = data;
-    this->subrange_view_start_pos = subrange_view_start_pos;
+SliceVecRange::SliceVecRange(std::shared_ptr<RangeData> data_, int subrange_view_start_pos_, size_t size_) {
+    this->data = data_;
+    this->subrange_view_start_pos = subrange_view_start_pos_;
     this->valid = true;
-    this->size = size;
+    this->size = size_;
     this->timestamp = 0;
 }
 
@@ -149,8 +146,8 @@ int SliceVecRange::getTimestamp() const {
     return timestamp;
 }
 
-void SliceVecRange::setTimestamp(int timestamp) const {
-    this->timestamp = timestamp;
+void SliceVecRange::setTimestamp(int timestamp_) const {
+    this->timestamp = timestamp_;
 }
 
 bool SliceVecRange::update(const Slice& key, const Slice& value) const {
@@ -171,8 +168,8 @@ SliceVecRange SliceVecRange::subRangeView(size_t start_index, size_t end_index) 
 
 void SliceVecRange::truncate(int length) const {
     assert(valid && size > 0 && data->keys.size() > 0 && subrange_view_start_pos == -1);
-    if (length < 0 || length > size) {
-        Logger::error("Invalid length to truncate");
+    if (length < 0 || (size_t)length > size) {
+        assert(false);
         return;
     }
     
@@ -202,7 +199,7 @@ int SliceVecRange::find(const Slice& key) const {
         }
     }
     
-    if (left >= size) {
+    if ((size_t)left >= size) {
         return -1;
     }
     return left;
@@ -263,5 +260,4 @@ void SliceVecRange::emplace(const Slice& key, const Slice& value) {
     size++;
 }
 
-}  // namespace lorc
 }  // namespace ROCKSDB_NAMESPACE

@@ -6,7 +6,6 @@
 #include "rocksdb/slice.h"
 
 namespace ROCKSDB_NAMESPACE {
-namespace lorc {
 
 /**
  * @brief SliceVecRange class represents a sorted key-value SliceVecRange in memory
@@ -84,5 +83,4 @@ public:
     }
 };
 
-}  // namespace lorc
 }  // namespace ROCKSDB_NAMESPACE

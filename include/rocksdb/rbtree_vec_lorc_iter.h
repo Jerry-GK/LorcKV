@@ -2,10 +2,9 @@
 
 #include <set>
 #include <string>
-#include "rocksdb/vec_lorc_iter.h""
+#include "rocksdb/vec_lorc_iter.h"
 
 namespace ROCKSDB_NAMESPACE {
-namespace lorc {
 
 class RBTreeSliceVecRangeCache;
 class SliceVecRange;
@@ -35,5 +34,4 @@ private:
     bool valid;
 };
 
-}  // namespace lorc
 }  // namespace ROCKSDB_NAMESPACE

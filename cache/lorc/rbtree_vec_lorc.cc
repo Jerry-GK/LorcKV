@@ -1,17 +1,15 @@
 #include <algorithm>
-#include <iostream>
 #include <cassert>
 #include <iomanip>
 #include <algorithm>
 #include <climits>
-#include "cache/lorc/rbtree_vec_lorc.h"
-#include "cache/lorc/rbtree_vec_lorc_iter.h"
+#include "rocksdb/rbtree_vec_lorc.h"
+#include "rocksdb/rbtree_vec_lorc_iter.h"
 
 namespace ROCKSDB_NAMESPACE {
-namespace lorc {
 
-RBTreeSliceVecRangeCache::RBTreeSliceVecRangeCache(int max_size)
-    : LogicallyOrderedSliceVecRangeCache(max_size) {
+RBTreeSliceVecRangeCache::RBTreeSliceVecRangeCache(int max_size_)
+    : LogicallyOrderedSliceVecRangeCache(max_size_) {
 }
 
 RBTreeSliceVecRangeCache::~RBTreeSliceVecRangeCache() {
@@ -45,7 +43,7 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
         // Handle left split: if existing SliceVecRange starts before newRange
         if (it->startKey() < newRange.startKey() && it->endKey() >= newRange.startKey()) {
             int leftSplitIdx = it->find(newRange.startKey()) - 1;
-            if (leftSplitIdx >= 0 && leftSplitIdx < it->getSize()) {
+            if (leftSplitIdx >= 0 && (size_t)leftSplitIdx < it->getSize()) {
                 leftRanges.emplace_back(std::move(it->subRangeView(0, leftSplitIdx)));
             }
         }
@@ -53,10 +51,10 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
         // Handle right split: if existing SliceVecRange ends after newRange
         if (it->endKey() > newRange.endKey() && it->startKey() <= newRange.endKey()) {
             int rightSplitIdx = it->find(newRange.endKey());
-            if (rightSplitIdx >= 0 && rightSplitIdx < it->getSize() && it->keyAt(rightSplitIdx) == newRange.endKey()) {
+            if (rightSplitIdx >= 0 && (size_t)rightSplitIdx < it->getSize() && it->keyAt(rightSplitIdx) == newRange.endKey()) {
                 rightSplitIdx++;
             }
-            if (rightSplitIdx >= 0 && rightSplitIdx < it->getSize()) {
+            if (rightSplitIdx >= 0 && (size_t)rightSplitIdx < it->getSize()) {
                 rightRanges.emplace_back(std::move(it->subRangeView(rightSplitIdx, it->getSize() - 1)));
             }
         }
@@ -75,7 +73,7 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
     
     // Concatenate: left ranges + newRange + right ranges
     if (leftRanges.size() > 1 || rightRanges.size() > 1) {
-        Logger::error("Left or right ranges size is greater than 1");
+        logger.error("Left or right ranges size is greater than 1");
         return;
     }
     
@@ -105,13 +103,13 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
     }
 
     // Debug output: print all ranges in order
-    Logger::debug("----------------------------------------");
-    Logger::debug("All ranges after putRange: " + newRangeStr);
-    for (auto it = orderedRanges.begin(); it != orderedRanges.end(); ++it) {
-        Logger::debug("SliceVecRange: " + it->toString());
+    logger.debug("----------------------------------------");
+    logger.debug("All ranges after putRange: " + newRangeStr);
+    for (auto itt = orderedRanges.begin(); itt != orderedRanges.end(); ++itt) {
+        logger.debug("SliceVecRange: " + itt->toString());
     }
-    Logger::debug("Total SliceVecRange size: " + std::to_string(this->current_size));
-    Logger::debug("----------------------------------------");
+    logger.debug("Total SliceVecRange size: " + std::to_string(this->current_size));
+    logger.debug("----------------------------------------");
 
     if (this->enable_statistic) {
         auto end_time = std::chrono::high_resolution_clock::now();
@@ -142,7 +140,7 @@ void RBTreeSliceVecRangeCache::victim() {
     // find the SliceVecRange in orderedRanges and remove it
     auto it = orderedRanges.find(SliceVecRange(victimRangeStartKey));
     if (it == orderedRanges.end() || it->startKey() != victimRangeStartKey) {
-        Logger::error("Victim SliceVecRange not found in orderedRanges");
+        logger.error("Victim SliceVecRange not found in orderedRanges");
         assert(false);
         return;
     }
@@ -150,13 +148,13 @@ void RBTreeSliceVecRangeCache::victim() {
     // If multiple ranges exist, remove the victim
     // If only one SliceVecRange remains, truncate it to fit max_size
     if (orderedRanges.size() > 1 || this->max_size <= 0) {
-        Logger::debug("Victim: " + it->toString());
+        logger.debug("Victim: " + it->toString());
         this->current_size -= lengthMap.begin()->first;
         orderedRanges.erase(it);    // TODO(jr): background delete
         lengthMap.erase(lengthMap.begin());
     } else {
         // Truncate the last remaining SliceVecRange
-        Logger::debug("Truncate: " + it->toString());
+        logger.debug("Truncate: " + it->toString());
         lengthMap.erase(lengthMap.find(it->getSize()));
         it->truncate(this->max_size);
         lengthMap.emplace(it->getSize(), it->startKey().ToString());
@@ -176,5 +174,4 @@ SliceVecRangeCacheIterator* RBTreeSliceVecRangeCache::newSliceVecRangeCacheItera
     return new RBTreeSliceVecRangeCacheIterator(this);
 }
 
-}  // namespace lorc
 }  // namespace ROCKSDB_NAMESPACE

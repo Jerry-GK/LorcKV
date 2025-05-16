@@ -182,7 +182,7 @@ int main() {
     // Configure LORC if enabled
     std::shared_ptr<LogicallyOrderedSliceVecRangeCache> lorc = nullptr;
     if (enable_lorc) {
-        lorc = rocksdb::NewRangeCache(range_cache_size);
+        lorc = rocksdb::NewRBTreeSliceVecRangeCache(range_cache_size);
         options.range_cache = lorc;
     }
 

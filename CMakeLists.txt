@@ -641,6 +641,10 @@ find_package(Threads REQUIRED)
 # Main library source code
 
 set(SOURCES
+        cache/lorc/rbtree_vec_lorc_iter.cc
+        cache/lorc/rbtree_vec_lorc.cc
+        cache/lorc/vec_lorc.cc
+        cache/lorc/vec_range.cc
         cache/cache.cc
         cache/cache_entry_roles.cc
         cache/cache_key.cc

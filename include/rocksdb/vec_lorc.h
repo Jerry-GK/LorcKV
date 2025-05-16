@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iostream>
 #include <unordered_map>
 #include <vector>
 #include <string>
@@ -9,6 +10,66 @@
 #include "rocksdb/vec_lorc_iter.h"
 
 namespace ROCKSDB_NAMESPACE {
+class LorcLogger {
+public:
+    enum Level {
+        DEBUG = 0,
+        INFO = 1,
+        WARN = 2,
+        ERROR = 3
+    };
+
+private:
+    std::string getLevelString(Level level) {
+        switch (level) {
+            case DEBUG: return "DEBUG";
+            case INFO:  return "INFO";
+            case WARN:  return "WARN";
+            case ERROR: return "ERROR";
+            default:    return "UNKNOWN";
+        }
+    }
+    
+    void log(Level level, const std::string& message) {
+        if (!enabled || level < currentLevel) return;
+        
+        auto now = std::time(nullptr);
+        auto tm = *std::localtime(&now);
+        
+        char time_buf[24];
+        strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", &tm);
+        
+        std::cout << "[LorcLogger]-"
+                  << "[" << getLevelString(level) << "]-"
+                  << "[" << time_buf << "]: " 
+                  << message << std::endl;
+    }
+
+public:
+    LorcLogger(Level level, bool enabled_) : currentLevel(level), enabled(enabled_) {}
+    LorcLogger() : currentLevel(Level::DEBUG), enabled(true) {}
+    ~LorcLogger() = default;
+
+    void debug(const std::string& message) {
+        log(DEBUG, message);
+    }
+    
+    void info(const std::string& message) {
+        log(INFO, message);
+    }
+    
+    void warn(const std::string& message) {
+        log(WARN, message);
+    }
+    
+    void error(const std::string& message) {
+        log(ERROR, message);
+    }
+
+private:
+    Level currentLevel;
+    bool enabled;
+};
 
 class CacheStatistic {
 public:
@@ -64,7 +125,7 @@ public:
      * Add a new SliceVecRange to the cache, merging with existing overlapping ranges.
      * The new SliceVecRange's data takes precedence over existing data in overlapping regions.
      */
-    virtual void putRange(lorc::SliceVecRange&& SliceVecRange) = 0;
+    virtual void putRange(SliceVecRange&& SliceVecRange) = 0;
 
     /**
      * Update an entry in existing ranges
@@ -123,6 +184,8 @@ protected:
 
     bool enable_statistic; // initialize to false
     CacheStatistic cache_statistic;
+
+    LorcLogger logger;
 
 private:
     int full_hit_count;

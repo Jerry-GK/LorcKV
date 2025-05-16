@@ -5,10 +5,8 @@
 #include <string>
 #include "rocksdb/vec_lorc.h"
 #include "rocksdb/vec_range.h"
-#include "cache/lorc/logger.h"
 
 namespace ROCKSDB_NAMESPACE {
-namespace lorc {
 
 class RBTreeRangeCacheIterator;
 class SliceVecRangeCacheIterator;
@@ -40,5 +38,4 @@ private:
     uint64_t cache_timestamp;          // Timestamp for LRU-like functionality
 };
 
-}  // namespace lorc
 }  // namespace ROCKSDB_NAMESPACE

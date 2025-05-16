@@ -1,11 +1,10 @@
 #include "rocksdb/vec_lorc.h"
 
 namespace ROCKSDB_NAMESPACE {
-namespace lorc {
 
-LogicallyOrderedSliceVecRangeCache::LogicallyOrderedSliceVecRangeCache(int max_size)
-    : max_size(max_size), full_hit_count(0), full_query_count(0), current_size(0), 
-      hit_size(0), query_size(0), enable_statistic(false), cache_statistic(CacheStatistic()) {
+LogicallyOrderedSliceVecRangeCache::LogicallyOrderedSliceVecRangeCache(int max_size_)
+    : max_size(max_size_), current_size(0), enable_statistic(false), cache_statistic(CacheStatistic()), logger(LorcLogger(LorcLogger::Level::DEBUG, true)), 
+    full_hit_count(0), full_query_count(0), hit_size(0), query_size(0) {
 }
 
 LogicallyOrderedSliceVecRangeCache::~LogicallyOrderedSliceVecRangeCache() {
@@ -15,8 +14,8 @@ bool LogicallyOrderedSliceVecRangeCache::enableStatistic() const {
     return enable_statistic;
 }
 
-void LogicallyOrderedSliceVecRangeCache::setEnableStatistic(bool enable_statistic) {
-    this->enable_statistic = enable_statistic;
+void LogicallyOrderedSliceVecRangeCache::setEnableStatistic(bool enable_statistic_) {
+    this->enable_statistic = enable_statistic_;
 }
 
 CacheStatistic& LogicallyOrderedSliceVecRangeCache::getCacheStatistic() {
@@ -54,5 +53,4 @@ double LogicallyOrderedSliceVecRangeCache::hitSizeRate() const {
     return (double)hit_size / query_size;
 }
 
-}  // namespace lorc
 }  // namespace ROCKSDB_NAMESPACE
