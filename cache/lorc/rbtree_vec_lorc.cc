@@ -90,6 +90,7 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
     }
     
     SliceVecRange mergedRange = SliceVecRange::concatRangesMoved(mergedRanges);
+    // string underlying data of mergedRanges is moved
     
     // Add the new merged SliceVecRange to both containers
     lengthMap.emplace(mergedRange.length(), mergedRange.startKey().ToString());
@@ -117,7 +118,7 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
         this->cache_statistic.increasePutRangeTotalTime(duration.count());
     }
 
-    // ~leftRanges and ~rightRanges
+    // deconstruction of the overlapping strings of old ranges with the deconstruction of leftRanges and rightRanges
 }
 
 bool RBTreeSliceVecRangeCache::updateEntry(const Slice& key, const Slice& value) {

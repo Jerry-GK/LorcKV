@@ -1,8 +1,78 @@
 #include <cassert>
 #include <algorithm> 
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <queue>
+#include <functional>
+#include <atomic>
 #include "rocksdb/vec_range.h"
 
 namespace ROCKSDB_NAMESPACE {
+
+// Global resource cleanup thread pool
+class ResourceCleanupThreadPool {
+public:
+    static ResourceCleanupThreadPool& GetInstance() {
+        static ResourceCleanupThreadPool instance;
+        return instance;
+    }
+
+    void Schedule(std::function<void()> task) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            tasks_.push(std::move(task));
+        }
+        condition_.notify_one();
+    }
+
+    ~ResourceCleanupThreadPool() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stop_ = true;
+        }
+        condition_.notify_all();
+        for (auto& thread : threads_) {
+            if (thread.joinable()) {
+                thread.join();
+            }
+        }
+    }
+
+private:
+    ResourceCleanupThreadPool(size_t thread_count = 1) : stop_(false) {
+        for (size_t i = 0; i < thread_count; ++i) {
+            threads_.emplace_back([this] {
+                while (true) {
+                    std::function<void()> task;
+                    {
+                        std::unique_lock<std::mutex> lock(mutex_);
+                        condition_.wait(lock, [this] { 
+                            return stop_ || !tasks_.empty(); 
+                        });
+                        
+                        if (stop_ && tasks_.empty()) {
+                            return;
+                        }
+                        
+                        task = std::move(tasks_.front());
+                        tasks_.pop();
+                    }
+                    task();
+                }
+            });
+        }
+    }
+
+    std::vector<std::thread> threads_;
+    std::queue<std::function<void()>> tasks_;
+    std::mutex mutex_;
+    std::condition_variable condition_;
+    bool stop_;
+};
+
+// Threshold for asynchronous resource release (in bytes)
+static const size_t kAsyncReleaseThreshold = 16 * 1024 * 1024; // 16MB
 
 SliceVecRange::SliceVecRange(bool valid_) {
     this->data = std::make_shared<RangeData>();
@@ -17,7 +87,19 @@ SliceVecRange::SliceVecRange(bool valid_) {
 }
 
 SliceVecRange::~SliceVecRange() {
-    data.reset();
+    // Check if there's enough data that needs asynchronous cleanup
+    if (data && data.use_count() == 1 && byte_size > kAsyncReleaseThreshold) {
+        // Create a copy of the data for asynchronous release
+        auto data_to_release = std::move(data);
+        
+        // Schedule an asynchronous task to release the resources
+        ResourceCleanupThreadPool::GetInstance().Schedule([data_to_release]() {
+            // data_to_release will be automatically released in the background thread
+        });
+    } else {
+        // For small data volumes or shared references (count > 1), release directly in the current thread
+        data.reset();
+    }
 }
 
 SliceVecRange::SliceVecRange(const SliceVecRange& other) {
@@ -70,12 +152,17 @@ SliceVecRange::SliceVecRange(Slice startKey) {
     this->timestamp = 0;
 }
 
-SliceVecRange::SliceVecRange(std::shared_ptr<RangeData> data_, int subrange_view_start_pos_, size_t size_) {
+SliceVecRange::SliceVecRange(std::shared_ptr<RangeData> data_, int subrange_view_start_pos_, size_t range_length_) {
     this->data = data_;
     this->subrange_view_start_pos = subrange_view_start_pos_;
     this->valid = true;
-    this->range_length = size_;
-    this->byte_size = 0; // it's no meaning to calculate the byte size in a subrange view
+    this->range_length = range_length_;
+    // TODO(jr): avoid calculating byte_size in the constructor
+    this->byte_size = 0;
+    for (size_t i = 0; i < range_length_; i++) {
+        this->byte_size += data_->keys[i].size();
+        this->byte_size += data_->values[i].size();
+    }
     this->timestamp = 0;
 }
 
