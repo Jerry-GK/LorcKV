@@ -870,6 +870,7 @@ static std::unordered_map<std::string, OptionTypeInfo>
          {offsetof(struct ImmutableCFOptions, persist_user_defined_timestamps),
           OptionType::kBoolean, OptionVerificationType::kNormal,
           OptionTypeFlags::kCompareLoose}},
+        // TODO(jr): add "range_cache" option
 };
 
 const std::string OptionsHelper::kCFOptionsName = "ColumnFamilyOptions";
@@ -1010,6 +1011,7 @@ ImmutableCFOptions::ImmutableCFOptions(const ColumnFamilyOptions& cf_options)
       compaction_thread_limiter(cf_options.compaction_thread_limiter),
       sst_partitioner_factory(cf_options.sst_partitioner_factory),
       blob_cache(cf_options.blob_cache),
+      range_cache(cf_options.range_cache),
       persist_user_defined_timestamps(
           cf_options.persist_user_defined_timestamps) {}
 

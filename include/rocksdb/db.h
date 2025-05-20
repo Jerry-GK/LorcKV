@@ -2133,6 +2133,9 @@ class DB {
   virtual Status TryCatchUpWithPrimary() {
     return Status::NotSupported("Supported only by secondary instance");
   }
+
+  // TODO(jr): remove it
+  std::string GetInternalKeyOfValueTypeStr(const Slice& _user_key, SequenceNumber s) const;
 };
 
 struct WriteStallStatsMapKeys {

@@ -209,6 +209,8 @@ struct SuperVersion {
   ColumnFamilyData* cfd;
   ReadOnlyMemTable* mem;
   MemTableListVersion* imm;
+  // TODO(jr): wrap the range cache here
+  std::shared_ptr<LogicallyOrderedSliceVecRangeCache> range_cache;
   Version* current;
   // TODO: do we really need this in addition to what's in current Version?
   MutableCFOptions mutable_cf_options;
@@ -241,7 +243,7 @@ struct SuperVersion {
   void Cleanup();
   void Init(
       ColumnFamilyData* new_cfd, MemTable* new_mem,
-      MemTableListVersion* new_imm, Version* new_current,
+      MemTableListVersion* new_imm, std::shared_ptr<LogicallyOrderedSliceVecRangeCache> new_range_cache, Version* new_current,
       std::shared_ptr<const SeqnoToTimeMapping> new_seqno_to_time_mapping);
 
   // Share the ownership of the seqno to time mapping object referred to in this
@@ -631,6 +633,8 @@ class ColumnFamilyData {
   std::unique_ptr<TableCache> table_cache_;
   std::unique_ptr<BlobFileCache> blob_file_cache_;
   std::unique_ptr<BlobSource> blob_source_;
+
+  std::shared_ptr<LogicallyOrderedSliceVecRangeCache> range_cache_;
 
   std::unique_ptr<InternalStats> internal_stats_;
 

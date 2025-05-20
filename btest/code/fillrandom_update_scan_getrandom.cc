@@ -104,7 +104,12 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
     if (len == -1) {
         len = end_key - start_key + 1;
     }
-    Iterator* it = db->NewIterator(ReadOptions());
+    const Snapshot* snapshot = db->GetSnapshot();
+    ReadOptions read_options;
+    read_options.snapshot = snapshot;
+    Iterator* it = db->NewIterator(read_options);
+    SequenceNumber seq_num = snapshot->GetSequenceNumber();
+
     SliceVecRange slice_vec_range(true);
     slice_vec_range.reserve(len);
     
@@ -117,19 +122,49 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
     } else {
         it->SeekToFirst();
     }
+
+    if (!it->Valid()) {
+        std::cout << "Warning: Iterator is not valid after seek the first key." << std::endl;
+    }
+
+    int printStrAddrNum = 0;
+    int stringBlockNum = 1;
+    long long diffSum = 0;
+    const char* last_str_addr = nullptr;
     for (; it->Valid(); it->Next()) {
-        std::string key = it->key().ToString();
+        Slice key_slice = it->key();
+        // TODO(jr): avoid internal key representation outside
+        std::string internal_key_str = db->GetInternalKeyOfValueTypeStr(key_slice, seq_num);
         
         // Start timing
         auto toString_start = high_resolution_clock::now();
         std::string value = it->value().ToString();
         auto toString_end = high_resolution_clock::now();
 
+        // print the first 10 value str address
+        if (printStrAddrNum-- > 0) {
+            std::cout << "key = " << internal_key_str << std::endl;
+            const char* str_addr = it->value().GetDataAddress();
+            const char* scan_value_addr = value.data();
+            std::cout << "  iter value str addr: " << (void*)str_addr << std::endl;
+            std::cout << "  scan value str addr: " << (void*)scan_value_addr << std::endl;
+            if (last_str_addr != nullptr ) {
+                // print the diff of the address
+                std::ptrdiff_t addr_diff = str_addr - last_str_addr;
+                std::cout << "  Diff: " << addr_diff << " bytes" << std::endl;
+                diffSum += addr_diff - VALUE_LEN;
+                if (addr_diff > 4200) {
+                    stringBlockNum++;
+                }
+            }
+            last_str_addr = str_addr;
+        }
+
         // Accumulate timing
         toString_time += duration_cast<duration<double>>(toString_end - toString_start);
        
         if (enable_lorc) {
-            slice_vec_range.emplaceMoved(key, value);
+            slice_vec_range.emplaceMoved(internal_key_str, value);
         }
         
         // std::cout << i << ": " << key  << std::endl;
@@ -137,6 +172,10 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
             break;
         }
     }
+
+    // print stringBlockNum and diffSum
+    std::cout << "  stringBlockNum: " << stringBlockNum << std::endl;
+    std::cout << "  diffSum: " << diffSum << " bytes" << std::endl;
 
     if (enable_lorc && slice_vec_range.length() != (size_t)len) {
         std::cout << "slice_vec_range.size = " << slice_vec_range.length() << std::endl;
@@ -176,8 +215,33 @@ void execute_scan_cold(DB* db, Options options) {
     execute_scan(db, options);
 }
 
-void execute_scan_hot(DB* db, Options options) {
-    std::cout << "\nExecuting hot scan..." << std::endl;
+// void execute_scan_hot(DB* db, Options options) {
+//     std::cout << "\nExecuting hot scan..." << std::endl;
+//     execute_scan(db, options);
+// }
+
+void execute_scan_hot_1(DB* db, Options options) {
+    std::cout << "\nExecuting hot scan 1..." << std::endl;
+    execute_scan(db, options);
+}
+
+void execute_scan_hot_2(DB* db, Options options) {
+    std::cout << "\nExecuting hot scan 2..." << std::endl;
+    execute_scan(db, options);
+}
+
+void execute_scan_hot_3(DB* db, Options options) {
+    std::cout << "\nExecuting hot scan 3..." << std::endl;
+    execute_scan(db, options);
+}
+
+void execute_scan_hot_4(DB* db, Options options) {
+    std::cout << "\nExecuting hot scan 4..." << std::endl;
+    execute_scan(db, options);
+}
+
+void execute_scan_hot_5(DB* db, Options options) {
+    std::cout << "\nExecuting hot scan 5..." << std::endl;
     execute_scan(db, options);
 }
 
@@ -246,7 +310,11 @@ int main() {
     // Execute operations based on flags
     if (do_scan) {
         execute_scan_cold(db, options);
-        execute_scan_hot(db, options);
+        execute_scan_hot_1(db, options);
+        execute_scan_hot_2(db, options);
+        execute_scan_hot_3(db, options);
+        execute_scan_hot_4(db, options);
+        execute_scan_hot_5(db, options);
     }
 
     if (do_get) {

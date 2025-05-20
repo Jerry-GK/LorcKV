@@ -22,15 +22,15 @@ public:
     void SeekForPrev(const Slice& target) override;
     void Next() override;
     void Prev() override;
-    const Slice key() const override;
-    const Slice value() const override;
-    std::string status() const override;
+    Slice key() const override;
+    Slice value() const override;
+    Status status() const override;
 
 private:
     const RBTreeSliceVecRangeCache* cache;
     std::set<SliceVecRange>::const_iterator current_range;
     int current_index;
-    std::string status_str;
+    Status iter_status;
     bool valid;
 };
 

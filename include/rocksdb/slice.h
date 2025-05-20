@@ -57,6 +57,9 @@ class Slice {
   // Return a pointer to the beginning of the referenced data
   const char* data() const { return data_; }
 
+  // Return the address of the underlying storage
+  const char* GetDataAddress() const { return data_; }
+
   // Return the length (in bytes) of the referenced data
   size_t size() const { return size_; }
 

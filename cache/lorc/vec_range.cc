@@ -76,7 +76,7 @@ static const size_t kAsyncReleaseThreshold = 16 * 1024 * 1024; // 16MB
 
 SliceVecRange::SliceVecRange(bool valid_) {
     this->data = std::make_shared<RangeData>();
-    this->valid = valid;
+    this->valid = valid_;
     this->range_length = 0;
     this->byte_size = 0;
     this->timestamp = 0;
@@ -210,12 +210,12 @@ SliceVecRange& SliceVecRange::operator=(SliceVecRange&& other) noexcept {
 }
 
 Slice SliceVecRange::startKey() const {
-    assert(valid && range_length > 0 && data->keys.length() > 0 && subrange_view_start_pos == -1);
+    assert(valid && range_length > 0 && data->keys.size() > 0 && subrange_view_start_pos == -1);
     return Slice(data->keys[0]);
 }
 
 Slice  SliceVecRange::endKey() const {
-    assert(valid && range_length > 0 && data->keys.length() > 0 && subrange_view_start_pos == -1);
+    assert(valid && range_length > 0 && data->keys.size() > 0 && subrange_view_start_pos == -1);
     return Slice(data->keys[range_length - 1]);
 }   
 
@@ -260,13 +260,13 @@ bool SliceVecRange::update(const Slice& key, const Slice& value) const {
 }
 
 SliceVecRange SliceVecRange::subRangeView(size_t start_index, size_t end_index) const {
-    assert(valid && range_length > end_index && start_index >= 0 && subrange_view_start_pos == -1);
+    assert(valid && range_length > end_index && subrange_view_start_pos == -1);
     // the only code to create non-negative subrange_view_start_pos
     return SliceVecRange(data, start_index, end_index - start_index + 1);
 }
 
 void SliceVecRange::truncate(int targetLength) const {
-    assert(valid && range_length > 0 && data->keys.length() > 0 && subrange_view_start_pos == -1);
+    assert(valid && range_length > 0 && data->keys.size() > 0 && subrange_view_start_pos == -1);
     if (targetLength < 0 || (size_t)targetLength > range_length) {
         assert(false);
         return;
@@ -319,7 +319,6 @@ SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& range
         return SliceVecRange(false);
     }
     
-    // TODO(jr): estimate the total size more accurately
     size_t total_length = 0;
     for (const auto& sliceVecRange : ranges) {
         total_length += sliceVecRange.length();

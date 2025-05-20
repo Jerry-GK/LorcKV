@@ -7,7 +7,6 @@
 #include <memory>
 #include <chrono>
 #include "rocksdb/vec_range.h"
-#include "rocksdb/vec_lorc_iter.h"
 
 namespace ROCKSDB_NAMESPACE {
 class LorcLogger {
@@ -116,6 +115,8 @@ private:
 // This is a cache for ranges. Key-Value Ranges is the smallest unit of data that can be cached.
 class SliceVecRangeCacheIterator;
 
+class Arena;
+
 class LogicallyOrderedSliceVecRangeCache {
 public:
     LogicallyOrderedSliceVecRangeCache(size_t capacity_);
@@ -174,7 +175,7 @@ public:
     /**
      * Get a new SliceVecRange cache iterator.
      */
-    virtual SliceVecRangeCacheIterator* newSliceVecRangeCacheIterator() const = 0;
+    virtual SliceVecRangeCacheIterator* newSliceVecRangeCacheIterator(Arena* arena) const = 0;
 
 protected:
     friend class SliceVecRangeCacheIterator;

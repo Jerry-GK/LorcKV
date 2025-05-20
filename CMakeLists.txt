@@ -658,6 +658,7 @@ set(SOURCES
         cache/secondary_cache_adapter.cc
         cache/sharded_cache.cc
         cache/tiered_secondary_cache.cc
+        db/db.cc # TODO(jr): remove this source file
         db/arena_wrapped_db_iter.cc
         db/attribute_group_iterator_impl.cc
         db/blob/blob_contents.cc

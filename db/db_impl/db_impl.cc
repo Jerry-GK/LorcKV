@@ -90,6 +90,7 @@
 #include "rocksdb/table.h"
 #include "rocksdb/version.h"
 #include "rocksdb/write_buffer_manager.h"
+#include "rocksdb/vec_lorc_iter.h"
 #include "table/block_based/block.h"
 #include "table/block_based/block_based_table_factory.h"
 #include "table/get_context.h"
@@ -2090,6 +2091,13 @@ InternalIterator* DBImpl::NewInternalIterator(
         super_version->mutable_cf_options.prefix_extractor.get(),
         &merge_iter_builder, !read_options.ignore_range_deletions);
   }
+
+  // Range cache iterator between immutable memtables and L0
+  if (s.ok() && super_version->range_cache != nullptr) {
+    SliceVecRangeCacheIterator* range_cache_iter = super_version->range_cache->newSliceVecRangeCacheIterator(arena);
+    merge_iter_builder.AddIterator(range_cache_iter);
+  }
+
   TEST_SYNC_POINT_CALLBACK("DBImpl::NewInternalIterator:StatusCallback", &s);
   if (s.ok()) {
     // Collect iterators for files in L0 - Ln

@@ -5,6 +5,7 @@
 #include <climits>
 #include "rocksdb/rbtree_vec_lorc.h"
 #include "rocksdb/rbtree_vec_lorc_iter.h"
+#include "memory/arena.h"
 
 namespace ROCKSDB_NAMESPACE {
 
@@ -151,7 +152,7 @@ void RBTreeSliceVecRangeCache::victim() {
     // If only one SliceVecRange remains, truncate it to fit capacity
     if (orderedRanges.size() > 1 || this->capacity <= 0) {
         logger.debug("Victim: " + it->toString());
-        orderedRanges.erase(it);    // TODO(jr): background delete
+        orderedRanges.erase(it);
         this->current_size -= it->byteSize();
         lengthMap.erase(lengthMap.begin());
     } else {
@@ -172,8 +173,9 @@ void RBTreeSliceVecRangeCache::pinRange(std::string startKey) {
     }
 }
 
-SliceVecRangeCacheIterator* RBTreeSliceVecRangeCache::newSliceVecRangeCacheIterator() const {
-    return new RBTreeSliceVecRangeCacheIterator(this);
+SliceVecRangeCacheIterator* RBTreeSliceVecRangeCache::newSliceVecRangeCacheIterator(Arena* arena) const {
+    auto mem = arena->AllocateAligned(sizeof(RBTreeSliceVecRangeCacheIterator));
+    return new (mem) RBTreeSliceVecRangeCacheIterator(this);
 }
 
 }  // namespace ROCKSDB_NAMESPACE

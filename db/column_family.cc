@@ -497,11 +497,13 @@ void SuperVersion::Cleanup() {
 
 void SuperVersion::Init(
     ColumnFamilyData* new_cfd, MemTable* new_mem, MemTableListVersion* new_imm,
+    std::shared_ptr<LogicallyOrderedSliceVecRangeCache> new_range_cache,
     Version* new_current,
     std::shared_ptr<const SeqnoToTimeMapping> new_seqno_to_time_mapping) {
   cfd = new_cfd;
   mem = new_mem;
   imm = new_imm;
+  range_cache = new_range_cache;
   current = new_current;
   full_history_ts_low = cfd->GetFullHistoryTsLow();
   seqno_to_time_mapping = std::move(new_seqno_to_time_mapping);
@@ -626,6 +628,7 @@ ColumnFamilyData::ColumnFamilyData(
                           internal_stats_->GetBlobFileReadHist(), io_tracer));
     blob_source_.reset(new BlobSource(ioptions_, mutable_cf_options_, db_id,
                                       db_session_id, blob_file_cache_.get()));
+    range_cache_ = ioptions_.range_cache;
 
     if (ioptions_.compaction_style == kCompactionStyleLevel) {
       compaction_picker_.reset(
@@ -1376,7 +1379,7 @@ void ColumnFamilyData::InstallSuperVersion(
 
   SuperVersion* new_superversion = sv_context->new_superversion.release();
   new_superversion->mutable_cf_options = GetLatestMutableCFOptions();
-  new_superversion->Init(this, mem_, imm_.current(), current_,
+  new_superversion->Init(this, mem_, imm_.current(), range_cache_, current_,
                          new_seqno_to_time_mapping.has_value()
                              ? std::move(new_seqno_to_time_mapping.value())
                          : super_version_

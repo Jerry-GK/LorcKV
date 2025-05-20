@@ -83,6 +83,8 @@ struct ImmutableCFOptions {
 
   std::shared_ptr<Cache> blob_cache;
 
+  std::shared_ptr<LogicallyOrderedSliceVecRangeCache> range_cache;
+
   bool persist_user_defined_timestamps;
 };
 

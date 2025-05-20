@@ -10,6 +10,7 @@ namespace ROCKSDB_NAMESPACE {
 
 class RBTreeRangeCacheIterator;
 class SliceVecRangeCacheIterator;
+class Arena;
 
 /**
  * RBTreeSliceVecRangeCache: A cache implementation using Red-Black Tree to store SliceVecRange data
@@ -24,7 +25,7 @@ public:
     bool updateEntry(const Slice& key, const Slice& value) override;
     void victim() override;
     
-    SliceVecRangeCacheIterator* newSliceVecRangeCacheIterator() const override;
+    SliceVecRangeCacheIterator* newSliceVecRangeCacheIterator(Arena* arena) const override;
 
     /**
      * Update the timestamp of a SliceVecRange to mark it as recently used.
