@@ -6,6 +6,7 @@
 #include <memory>
 #include <iomanip>
 #include <algorithm>
+#include <memory_resource> // 添加 PMR 头文件
 
 // Continuous storage structure for strings
 class ContinuousStorage {
@@ -99,6 +100,18 @@ double test_contiguous_to_noncontiguous(const ContinuousStorage& source, std::ve
     return std::chrono::duration<double>(end - start).count();
 }
 
+// 新增 PMR 测试函数
+double test_noncontiguous_to_pmr(const std::vector<std::string>& source, std::pmr::vector<std::pmr::string>& target) {
+    auto start = std::chrono::high_resolution_clock::now();
+    
+    for (size_t i = 0; i < source.size(); ++i) {
+        memcpy(&target[i][0], source[i].c_str(), source[i].length());
+    }
+    
+    auto end = std::chrono::high_resolution_clock::now();
+    return std::chrono::duration<double>(end - start).count();
+}
+
 double test_noncontiguous_to_contiguous(const std::vector<std::string>& source, ContinuousStorage& target) {
     auto start = std::chrono::high_resolution_clock::now();
     
@@ -129,7 +142,7 @@ double test_contiguous_to_contiguous(const ContinuousStorage& source, Continuous
 
 int main() {
     const size_t STRING_SIZE = 4096;
-    const size_t NUM_STRINGS = 200000;
+    const size_t NUM_STRINGS = 200000 * 5;
     const size_t TOTAL_DATA_MB = (STRING_SIZE * NUM_STRINGS) / (1024 * 1024);
     
     std::cout << "Preparing test data..." << std::endl;
@@ -160,9 +173,33 @@ int main() {
     bool run_test2 = true;  // Contiguous to non-contiguous
     bool run_test3 = true;  // Non-contiguous to contiguous
     bool run_test4 = true;  // Contiguous to contiguous
+    bool run_test5 = true;  // Non-contiguous to PMR vector
 
     std::vector<std::string> target_strings;
     ContinuousStorage cont_target;
+    
+    // 准备 PMR 内存资源和容器
+    std::unique_ptr<char[]> buffer;
+    std::pmr::vector<std::pmr::string> pmr_target;
+    std::pmr::monotonic_buffer_resource* pmr_resource = nullptr;
+    
+    if (run_test5) {
+        size_t buffer_size = NUM_STRINGS * (STRING_SIZE + sizeof(std::pmr::string) + 32);  // 分配足够的缓冲空间
+        buffer = std::make_unique<char[]>(buffer_size);
+        pmr_resource = new std::pmr::monotonic_buffer_resource(buffer.get(), buffer_size);
+        
+        // 创建使用pmr内存资源的pmr分配器
+        std::pmr::polymorphic_allocator<std::pmr::string> alloc(pmr_resource);
+        pmr_target = std::pmr::vector<std::pmr::string>(alloc);
+        pmr_target.reserve(NUM_STRINGS);
+        
+        // 正确创建pmr字符串
+        for (size_t i = 0; i < NUM_STRINGS; ++i) {
+            // 创建一个使用相同内存资源的字符串
+            std::pmr::string str(STRING_SIZE, ' ', pmr_resource);
+            pmr_target.push_back(std::move(str));
+        }
+    }
 
     if (run_test1 || run_test2) {
         target_strings.resize(NUM_STRINGS);
@@ -178,8 +215,8 @@ int main() {
     // Run tests
     std::cout << "\nRunning tests...\n" << std::endl;
     
-    double time1 = 0, time2 = 0, time3 = 0, time4 = 0;
-    double throughput1 = 0, throughput2 = 0, throughput3 = 0, throughput4 = 0;
+    double time1 = 0, time2 = 0, time3 = 0, time4 = 0, time5 = 0;
+    double throughput1 = 0, throughput2 = 0, throughput3 = 0, throughput4 = 0, throughput5 = 0;
 
     if (run_test1) {
         time1 = test_noncontiguous_to_noncontiguous(source_strings, target_strings);
@@ -201,6 +238,11 @@ int main() {
         throughput4 = TOTAL_DATA_MB / time4;
     }
 
+    if (run_test5) {
+        time5 = test_noncontiguous_to_pmr(source_strings, pmr_target);
+        throughput5 = TOTAL_DATA_MB / time5;
+    }
+
     // Display results
     std::cout << "Test Results:" << std::endl;
     std::cout << std::fixed << std::setprecision(2);
@@ -220,6 +262,9 @@ int main() {
     if (run_test4) {
         std::cout << "| Contiguous -> Contiguous         | " << std::setw(8) << time4 << " | " << std::setw(16) << throughput4 << " |" << std::endl;
     }
+    if (run_test5) {
+        std::cout << "| Non-contiguous -> PMR            | " << std::setw(8) << time5 << " | " << std::setw(16) << throughput5 << " |" << std::endl;
+    }
     std::cout << "--------------------------------------------------------------" << std::endl;
 
     // Calculate improvements
@@ -237,6 +282,15 @@ int main() {
             double improvement3 = (throughput4 / throughput1 - 1.0) * 100;
             std::cout << "- Both contiguous improvement: " << improvement3 << "%" << std::endl;
         }
+        if (run_test5) {
+            double improvement4 = (throughput5 / throughput1 - 1.0) * 100;
+            std::cout << "- PMR vector improvement: " << improvement4 << "%" << std::endl;
+        }
+    }
+    
+    // 清理 PMR 资源
+    if (pmr_resource) {
+        delete pmr_resource;
     }
     
     return 0;

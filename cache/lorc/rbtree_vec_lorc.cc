@@ -10,12 +10,24 @@
 namespace ROCKSDB_NAMESPACE {
 
 RBTreeSliceVecRangeCache::RBTreeSliceVecRangeCache(size_t capacity_)
-    : LogicallyOrderedSliceVecRangeCache(capacity_) {
+    : LogicallyOrderedSliceVecRangeCache(capacity_),
+      range_buffer(new char[capacity_]),
+      range_pool(range_buffer, capacity_) {
+    constexpr size_t block_size = 4096; // typical page size
+    for (size_t i = 0; i < capacity_; i += block_size) {
+        size_t write_size = std::min(block_size, capacity_ - i);
+        std::memset(range_buffer + i, static_cast<char>(i & 0xFF), write_size);
+        // avoid compiler optimization of writing to range_buffer
+        volatile char dummy = range_buffer[i];
+    }
 }
 
 RBTreeSliceVecRangeCache::~RBTreeSliceVecRangeCache() {
     orderedRanges.clear();
     lengthMap.clear();
+    delete[] range_buffer;
+    range_buffer = nullptr;
+    range_pool.release();
 }
 
 void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
@@ -61,8 +73,8 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
         }
 
         // Remove the old SliceVecRange from both containers
-        auto SliceVecRange = lengthMap.equal_range(it->length());
-        for (auto itt = SliceVecRange.first; itt != SliceVecRange.second; ++itt) {
+        auto sliceVecRangeStartKeysRange = lengthMap.equal_range(it->length());
+        for (auto itt = sliceVecRangeStartKeysRange.first; itt != sliceVecRangeStartKeysRange.second; ++itt) {
             if (itt->second == it->startKey()) {
                 lengthMap.erase(itt);
                 break;
@@ -70,6 +82,7 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
         }
         this->current_size -= it->byteSize();
         it = orderedRanges.erase(it);
+        std::cout << "Remove old SliceVecRange, size =  " << orderedRanges.size() << std::endl;
     }
     
     // Concatenate: left ranges + newRange + right ranges
@@ -90,7 +103,7 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
         mergedRanges.emplace_back(std::move(SliceVecRange));
     }
     
-    SliceVecRange mergedRange = SliceVecRange::concatRangesMoved(mergedRanges);
+    SliceVecRange mergedRange = SliceVecRange::concatRangesMoved(mergedRanges, this->getRangePool());
     // string underlying data of mergedRanges is moved
     
     // Add the new merged SliceVecRange to both containers
@@ -176,6 +189,10 @@ void RBTreeSliceVecRangeCache::pinRange(std::string startKey) {
 SliceVecRangeCacheIterator* RBTreeSliceVecRangeCache::newSliceVecRangeCacheIterator(Arena* arena) const {
     auto mem = arena->AllocateAligned(sizeof(RBTreeSliceVecRangeCacheIterator));
     return new (mem) RBTreeSliceVecRangeCacheIterator(this);
+}
+
+std::pmr::monotonic_buffer_resource* RBTreeSliceVecRangeCache::getRangePool() {
+    return &range_pool;
 }
 
 }  // namespace ROCKSDB_NAMESPACE

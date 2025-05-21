@@ -59,8 +59,8 @@ void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
         }
 
         // Remove the old SliceVecRange from both containers
-        auto SliceVecRange = lengthMap.equal_range(it->getSize());
-        for (auto itt = SliceVecRange.first; itt != SliceVecRange.second; ++itt) {
+        auto sliceVecRangeStartKeysRange = lengthMap.equal_range(it->getSize());
+        for (auto itt = sliceVecRangeStartKeysRange.first; itt != sliceVecRangeStartKeysRange.second; ++itt) {
             if (itt->second == it->startKey()) {
                 lengthMap.erase(itt);
                 break;

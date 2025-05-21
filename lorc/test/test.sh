@@ -14,7 +14,7 @@ if [ "$mode" != "run" ] && [ "$mode" != "debug" ] && [ "$mode" != "profile" ]; t
 fi
 
 # compile 
-g++ -std=c++17 -g -O2 -fno-omit-frame-pointer -rdynamic ${task}.cc -o ../bin/${task}
+g++ -std=c++20 -g -O2 -fno-omit-frame-pointer -rdynamic ${task}.cc -o ../bin/${task}
 
 # run
 if [ "$mode" == "run" ]; then

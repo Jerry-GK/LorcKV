@@ -73,22 +73,26 @@ private:
 
 // Threshold for asynchronous resource release (in bytes)
 static const size_t kAsyncReleaseThreshold = 16 * 1024 * 1024; // 16MB
+static const bool enable_background_release = false;
 
-SliceVecRange::SliceVecRange(bool valid_) {
-    this->data = std::make_shared<RangeData>();
+SliceVecRange::SliceVecRange(bool valid_, std::pmr::monotonic_buffer_resource* range_pool) {
     this->valid = valid_;
     this->range_length = 0;
     this->byte_size = 0;
     this->timestamp = 0;
     this->subrange_view_start_pos = -1;
-    if (valid) {
-        data = std::make_shared<RangeData>();
+    if (valid_) {
+        assert(range_pool != nullptr);
+        this->data = std::make_shared<RangeData>();
+        std::pmr::polymorphic_allocator<char> alloc(range_pool);
+        // build value vec on the value memory pool
+        new (&(data->values)) std::pmr::vector<std::pmr::string>(alloc);
     }
 }
 
 SliceVecRange::~SliceVecRange() {
     // Check if there's enough data that needs asynchronous cleanup
-    if (data && data.use_count() == 1 && byte_size > kAsyncReleaseThreshold) {
+    if (enable_background_release && data && data.use_count() == 1 && byte_size > kAsyncReleaseThreshold) {
         // Create a copy of the data for asynchronous release
         auto data_to_release = std::move(data);
         
@@ -113,7 +117,13 @@ SliceVecRange::SliceVecRange(const SliceVecRange& other) {
     if (other.valid && other.data) {
         this->data = std::make_shared<RangeData>();
         this->data->keys = other.data->keys;
-        this->data->values = other.data->values;
+        
+        auto src_alloc = other.data->values.get_allocator();
+        this->data->values = std::pmr::vector<std::pmr::string>(src_alloc);
+        this->data->values.reserve(other.data->values.size());
+        for (const auto& value : other.data->values) {
+            this->data->values.emplace_back(value);
+        }
     }
 }
 
@@ -131,20 +141,10 @@ SliceVecRange::SliceVecRange(SliceVecRange&& other) noexcept {
     other.timestamp = 0;
 }
 
-// SliceVecRange::SliceVecRange(std::vector<std::string>&& keys, std::vector<std::string>&& values, size_t range_length) {
-//     data = std::make_shared<RangeData>();
-//     data->keys = std::move(keys);
-//     data->values = std::move(values);
-//     this->subrange_view_start_pos = -1;
-//     this->valid = true;
-//     this->range_length = range_length;
-//     this->timestamp = 0;
-// }
-
 SliceVecRange::SliceVecRange(Slice startKey) {
     data = std::make_shared<RangeData>();
-    data->keys.push_back(startKey.ToString());
-    data->values.push_back("");
+    data->keys.emplace_back(startKey.ToString());
+    data->values.emplace_back("");
     this->subrange_view_start_pos = -1;
     this->valid = true;
     this->range_length = 1;
@@ -167,7 +167,7 @@ SliceVecRange::SliceVecRange(std::shared_ptr<RangeData> data_, int subrange_view
 }
 
 SliceVecRange& SliceVecRange::operator=(const SliceVecRange& other) {
-    // RBTreeSliceVecRangeCache should never call this
+    // should never call this method
     // assert(false);
     if (this != &other) {
         this->valid = other.valid;
@@ -179,7 +179,13 @@ SliceVecRange& SliceVecRange::operator=(const SliceVecRange& other) {
         if (other.valid && other.data) {
             this->data = std::make_shared<RangeData>();
             this->data->keys = other.data->keys;
-            this->data->values = other.data->values;
+            
+            auto src_alloc = other.data->values.get_allocator();
+            this->data->values = std::pmr::vector<std::pmr::string>(src_alloc);
+            this->data->values.reserve(other.data->values.size());
+            for (const auto& value : other.data->values) {
+                this->data->values.emplace_back(value);
+            }
         } else {
             this->data.reset();
         }
@@ -214,7 +220,7 @@ Slice SliceVecRange::startKey() const {
     return Slice(data->keys[0]);
 }
 
-Slice  SliceVecRange::endKey() const {
+Slice SliceVecRange::endKey() const {
     assert(valid && range_length > 0 && data->keys.size() > 0 && subrange_view_start_pos == -1);
     return Slice(data->keys[range_length - 1]);
 }   
@@ -314,9 +320,9 @@ std::string SliceVecRange::toString() const {
 }
 
 // Function to combine ordered and non-overlapping ranges with move semantics
-SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& ranges) {
+SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& ranges, std::pmr::monotonic_buffer_resource* range_pool) {
     if (ranges.empty()) {
-        return SliceVecRange(false);
+        return SliceVecRange(false, nullptr);
     }
     
     size_t total_length = 0;
@@ -325,6 +331,8 @@ SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& range
     }
     
     auto new_data = std::make_shared<RangeData>();
+    std::pmr::polymorphic_allocator<char> alloc(range_pool);
+    new (&(new_data->values)) std::pmr::vector<std::pmr::string>(alloc);
     new_data->keys.reserve(total_length);
     new_data->values.reserve(total_length);
 
@@ -362,8 +370,8 @@ void SliceVecRange::reserve(size_t len) {
 
 void SliceVecRange::emplace(const Slice& key, const Slice& value) {
     assert(valid && subrange_view_start_pos == -1);
-    data->keys.emplace_back(key.ToString());
-    data->values.emplace_back(value.ToString());
+    data->keys.emplace_back(key.data(), key.size());
+    data->values.emplace_back(value.data(), value.size());
     range_length++;
     byte_size += key.size() + value.size();
 }

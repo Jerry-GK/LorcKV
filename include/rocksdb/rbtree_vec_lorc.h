@@ -3,6 +3,7 @@
 #include <set>
 #include <map>
 #include <string>
+#include <memory_resource>
 #include "rocksdb/vec_lorc.h"
 #include "rocksdb/vec_range.h"
 
@@ -27,6 +28,8 @@ public:
     
     SliceVecRangeCacheIterator* newSliceVecRangeCacheIterator(Arena* arena) const override;
 
+    std::pmr::monotonic_buffer_resource* getRangePool() override;
+
     /**
      * Update the timestamp of a SliceVecRange to mark it as recently used.
      */
@@ -37,6 +40,11 @@ private:
     std::set<SliceVecRange> orderedRanges;     // Container for ranges sorted by start key
     std::multimap<int, std::string> lengthMap;  // Container for ranges sorted by length (for victim selection)
     uint64_t cache_timestamp;          // Timestamp for LRU-like functionality
+
+    // Memory pool for storing range data
+    // TODO(jr): wrap the memory pool
+    char* range_buffer;
+    std::pmr::monotonic_buffer_resource range_pool;
 };
 
 }  // namespace ROCKSDB_NAMESPACE

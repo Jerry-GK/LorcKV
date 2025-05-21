@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <memory_resource>
+#include <atomic>
 #include "rocksdb/slice.h"
 
 namespace ROCKSDB_NAMESPACE {
@@ -16,7 +18,7 @@ class SliceVecRange {
 private:
     struct RangeData {
         std::vector<std::string> keys;
-        std::vector<std::string> values;
+        std::pmr::vector<std::pmr::string> values;
     };
     std::shared_ptr<RangeData> data;
     mutable size_t range_length; // size in length
@@ -27,12 +29,15 @@ private:
     // Start position for subrange operations (default -1). If >= 0, indicates this is a subrange view, and only used in concatRangesMoved
     int subrange_view_start_pos; 
 
+    // 静态原子计数器，用于跟踪全局SliceVecRange对象数量
+    static std::atomic<int64_t> global_instance_count;
+
     private:
     // construct by data pointer and subrange_view_start_pos, it's a subrange view if subrange_view_start_pos >= 0
     SliceVecRange(std::shared_ptr<RangeData> data, int subrange_view_start_pos, size_t length);
 
 public:
-    SliceVecRange(bool valid = false);
+    SliceVecRange(bool valid, std::pmr::monotonic_buffer_resource* range_pool);
     ~SliceVecRange();      
     // create from string vector
     // create a SliceVecRange with a single key-value pair, used for seekx
@@ -43,6 +48,9 @@ public:
     SliceVecRange(SliceVecRange&& other) noexcept;
     SliceVecRange& operator=(const SliceVecRange& other);
     SliceVecRange& operator=(SliceVecRange&& other) noexcept;
+
+    // 获取当前全局SliceVecRange实例数量
+    static int64_t GetGlobalInstanceCount();
 
     // reserve the range
     void reserve(size_t len);
@@ -79,7 +87,7 @@ public:
     std::string toString() const;
 
     // Merge ordered and non-overlapping ranges without deep copy
-    static SliceVecRange concatRangesMoved(std::vector<SliceVecRange>& ranges);
+    static SliceVecRange concatRangesMoved(std::vector<SliceVecRange>& ranges, std::pmr::monotonic_buffer_resource* range_pool);
 
     // Define comparison operator, sort by startKey in ascending order
     bool operator<(const SliceVecRange& other) const {

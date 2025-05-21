@@ -177,6 +177,11 @@ public:
      */
     virtual SliceVecRangeCacheIterator* newSliceVecRangeCacheIterator(Arena* arena) const = 0;
 
+    /**
+     * Get the value memory pool for the range cache.
+     */
+    virtual std::pmr::monotonic_buffer_resource* getRangePool() { assert(false); return nullptr; };
+
 protected:
     friend class SliceVecRangeCacheIterator;
 

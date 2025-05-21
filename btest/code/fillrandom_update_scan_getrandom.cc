@@ -34,7 +34,7 @@ size_t blob_cache_size = 0; // 0MB
 // size_t blob_cache_size = 1024 * 1024 * 1024; // 1GB
 // size_t blob_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
 
-size_t range_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
+size_t range_cache_size = (size_t)2 * 4096 * 1024 * 1024; // 4GB
 
 const int start_key = 100000; // Start key for range
 const int end_key = 999999;   // End key for range
@@ -99,7 +99,47 @@ void execute_insert(DB* db, Options options) {
     cout << "Insert time: " << time_span.count() << " seconds" << endl;
 }
 
-void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int len = -1) {
+void execute_scan_without_lorc(DB* db, std::string scan_start_key = "" , int len = -1) {
+    auto start = high_resolution_clock::now();
+    if (len == -1) {
+        len = end_key - start_key + 1;
+    }
+    const Snapshot* snapshot = db->GetSnapshot();
+    ReadOptions read_options;
+    read_options.snapshot = snapshot;
+    Iterator* it = db->NewIterator(read_options);
+    // Time tracking for ToString operations
+    duration<double> toString_time(0);
+
+    int i = 0;
+    if (scan_start_key != "" && !scan_start_key.empty()) {
+        it->Seek(scan_start_key);
+    } else {
+        it->SeekToFirst();
+    }
+
+    if (!it->Valid()) {
+        std::cout << "Warning: Iterator is not valid after seek the first key." << std::endl;
+    }
+
+    for (; it->Valid(); it->Next()) {
+        Slice key_slice = it->key();
+        auto toString_start = high_resolution_clock::now();
+        std::string value = it->value().ToString();
+        auto toString_end = high_resolution_clock::now();
+
+        // Accumulate timing
+        toString_time += duration_cast<duration<double>>(toString_end - toString_start);
+    }
+
+    delete it;
+    auto end = high_resolution_clock::now();
+    duration<double> time_span = duration_cast<duration<double>>(end - start);
+    cout << "Scan time: " << time_span.count() << " seconds" << endl;
+    cout << "ToString time: " << toString_time.count() << " seconds" << endl;
+}
+
+void execute_scan_with_lorc(DB* db, std::shared_ptr<LogicallyOrderedSliceVecRangeCache> lorc, std::string scan_start_key = "" , int len = -1) {
     auto start = high_resolution_clock::now();
     if (len == -1) {
         len = end_key - start_key + 1;
@@ -110,7 +150,7 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
     Iterator* it = db->NewIterator(read_options);
     SequenceNumber seq_num = snapshot->GetSequenceNumber();
 
-    SliceVecRange slice_vec_range(true);
+    SliceVecRange slice_vec_range(true, lorc->getRangePool());
     slice_vec_range.reserve(len);
     
     // Time tracking for ToString operations
@@ -127,7 +167,7 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
         std::cout << "Warning: Iterator is not valid after seek the first key." << std::endl;
     }
 
-    int printStrAddrNum = 0;
+    int printStrAddrNum = len;
     int stringBlockNum = 1;
     long long diffSum = 0;
     const char* last_str_addr = nullptr;
@@ -138,20 +178,21 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
         
         // Start timing
         auto toString_start = high_resolution_clock::now();
-        std::string value = it->value().ToString();
+        Slice value_slice = it->value();
+        // std::string value = it->value().ToString();
+        if (enable_lorc) {
+            slice_vec_range.emplace(Slice(internal_key_str), value_slice);
+        }
         auto toString_end = high_resolution_clock::now();
 
         // print the first 10 value str address
         if (printStrAddrNum-- > 0) {
-            std::cout << "key = " << internal_key_str << std::endl;
+            // std::cout << "key = " << internal_key_str << std::endl;
             const char* str_addr = it->value().GetDataAddress();
-            const char* scan_value_addr = value.data();
-            std::cout << "  iter value str addr: " << (void*)str_addr << std::endl;
-            std::cout << "  scan value str addr: " << (void*)scan_value_addr << std::endl;
+            // std::cout << "  iter value str addr: " << (void*)str_addr << std::endl;
             if (last_str_addr != nullptr ) {
                 // print the diff of the address
                 std::ptrdiff_t addr_diff = str_addr - last_str_addr;
-                std::cout << "  Diff: " << addr_diff << " bytes" << std::endl;
                 diffSum += addr_diff - VALUE_LEN;
                 if (addr_diff > 4200) {
                     stringBlockNum++;
@@ -162,10 +203,6 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
 
         // Accumulate timing
         toString_time += duration_cast<duration<double>>(toString_end - toString_start);
-       
-        if (enable_lorc) {
-            slice_vec_range.emplaceMoved(internal_key_str, value);
-        }
         
         // std::cout << i << ": " << key  << std::endl;
         if (++i >= len) {
@@ -175,7 +212,7 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
 
     // print stringBlockNum and diffSum
     std::cout << "  stringBlockNum: " << stringBlockNum << std::endl;
-    std::cout << "  diffSum: " << diffSum << " bytes" << std::endl;
+    std::cout << "  avg diffSum: " << diffSum / len << " bytes" << std::endl;
 
     if (enable_lorc && slice_vec_range.length() != (size_t)len) {
         std::cout << "slice_vec_range.size = " << slice_vec_range.length() << std::endl;
@@ -184,14 +221,14 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
 
     // lorc put range
     if (enable_lorc) {
-        options.range_cache->putRange(std::move(slice_vec_range)); 
+        lorc->putRange(std::move(slice_vec_range)); 
     }
 
     delete it;
     auto end = high_resolution_clock::now();
     duration<double> time_span = duration_cast<duration<double>>(end - start);
     cout << "Scan time: " << time_span.count() << " seconds" << endl;
-    cout << "ToString time: " << toString_time.count() << " seconds" << endl;
+    cout << "ToString and add to range time: " << toString_time.count() << " seconds" << endl;
 }
 
 void execute_get(DB* db, Options options) {
@@ -210,39 +247,39 @@ void execute_get(DB* db, Options options) {
 }
 
 // for test
-void execute_scan_cold(DB* db, Options options) {
+void execute_scan_cold(DB* db, std::shared_ptr<LogicallyOrderedSliceVecRangeCache> lorc) {
     std::cout << "\nExecuting cold scan..." << std::endl;
-    execute_scan(db, options);
+    execute_scan_with_lorc(db, lorc);
 }
 
 // void execute_scan_hot(DB* db, Options options) {
 //     std::cout << "\nExecuting hot scan..." << std::endl;
-//     execute_scan(db, options);
+//     execute_scan_with_lorc(db, options);
 // }
 
-void execute_scan_hot_1(DB* db, Options options) {
+void execute_scan_hot_1(DB* db, std::shared_ptr<LogicallyOrderedSliceVecRangeCache> lorc) {
     std::cout << "\nExecuting hot scan 1..." << std::endl;
-    execute_scan(db, options);
+    execute_scan_with_lorc(db, lorc);
 }
 
-void execute_scan_hot_2(DB* db, Options options) {
+void execute_scan_hot_2(DB* db, std::shared_ptr<LogicallyOrderedSliceVecRangeCache> lorc) {
     std::cout << "\nExecuting hot scan 2..." << std::endl;
-    execute_scan(db, options);
+    execute_scan_with_lorc(db, lorc);
 }
 
-void execute_scan_hot_3(DB* db, Options options) {
+void execute_scan_hot_3(DB* db, std::shared_ptr<LogicallyOrderedSliceVecRangeCache> lorc) {
     std::cout << "\nExecuting hot scan 3..." << std::endl;
-    execute_scan(db, options);
+    execute_scan_with_lorc(db, lorc);
 }
 
-void execute_scan_hot_4(DB* db, Options options) {
+void execute_scan_hot_4(DB* db, std::shared_ptr<LogicallyOrderedSliceVecRangeCache> lorc) {
     std::cout << "\nExecuting hot scan 4..." << std::endl;
-    execute_scan(db, options);
+    execute_scan_with_lorc(db, lorc);
 }
 
-void execute_scan_hot_5(DB* db, Options options) {
+void execute_scan_hot_5(DB* db, std::shared_ptr<LogicallyOrderedSliceVecRangeCache> lorc) {
     std::cout << "\nExecuting hot scan 5..." << std::endl;
-    execute_scan(db, options);
+    execute_scan_with_lorc(db, lorc);
 }
 
 int main() {
@@ -309,12 +346,12 @@ int main() {
 
     // Execute operations based on flags
     if (do_scan) {
-        execute_scan_cold(db, options);
-        execute_scan_hot_1(db, options);
-        execute_scan_hot_2(db, options);
-        execute_scan_hot_3(db, options);
-        execute_scan_hot_4(db, options);
-        execute_scan_hot_5(db, options);
+        execute_scan_cold(db, lorc);
+        execute_scan_hot_1(db, lorc);
+        execute_scan_hot_2(db, lorc);
+        execute_scan_hot_3(db, lorc);
+        execute_scan_hot_4(db, lorc);
+        execute_scan_hot_5(db, lorc);
     }
 
     if (do_get) {
