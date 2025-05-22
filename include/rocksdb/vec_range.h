@@ -78,6 +78,8 @@ public:
 
     std::string toString() const;
 
+    static std::string ToStringPlain(std::string s);
+
     // Merge ordered and non-overlapping ranges without deep copy
     static SliceVecRange concatRangesMoved(std::vector<SliceVecRange>& ranges);
 

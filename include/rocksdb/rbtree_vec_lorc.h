@@ -21,7 +21,7 @@ public:
     RBTreeSliceVecRangeCache(size_t capacity);
     ~RBTreeSliceVecRangeCache() override;
 
-    void putRange(SliceVecRange&& SliceVecRange) override;
+    void putRange(ReferringSliceVecRange&& newRefRange) override;
     bool updateEntry(const Slice& key, const Slice& value) override;
     void victim() override;
     

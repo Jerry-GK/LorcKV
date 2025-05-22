@@ -10,6 +10,24 @@
 
 namespace ROCKSDB_NAMESPACE {
 
+// Only for debug (internal keys)
+std::string SliceVecRange::ToStringPlain(std::string s) {
+    std::string result;
+    result.reserve(s.size());
+    for (size_t i = 0; i < s.size(); ++i) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c < 32 || c > 126) {
+            // ignore the non-printable characters
+            // char hex[5];
+            // snprintf(hex, sizeof(hex), "\\x%02x", c);
+            // result.append(hex);
+        } else {
+            result.push_back(s[i]);
+        }
+    }
+    return result;
+}
+
 // Global resource cleanup thread pool
 class ResourceCleanupThreadPool {
 public:
@@ -309,7 +327,7 @@ int SliceVecRange::find(const Slice& key) const {
 }
 
 std::string SliceVecRange::toString() const {
-    std::string str = "< " + this->startKey().ToString() + " -> " + this->endKey().ToString() + " >";
+    std::string str = "< " + ToStringPlain(this->startKey().ToString()) + " -> " + ToStringPlain(this->endKey().ToString()) + " >";
     return str;
 }
 
@@ -353,7 +371,6 @@ SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& range
     return SliceVecRange(new_data, -1, total_length);
 }
 
-// build methods
 void SliceVecRange::reserve(size_t len) {
     assert(valid);
     data->keys.reserve(len);
@@ -362,8 +379,8 @@ void SliceVecRange::reserve(size_t len) {
 
 void SliceVecRange::emplace(const Slice& key, const Slice& value) {
     assert(valid && subrange_view_start_pos == -1);
-    data->keys.emplace_back(key.ToString());
-    data->values.emplace_back(value.ToString());
+    data->keys.emplace_back(key.data(), key.size());
+    data->values.emplace_back(value.data(), value.size());
     range_length++;
     byte_size += key.size() + value.size();
 }

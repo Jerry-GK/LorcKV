@@ -8,6 +8,7 @@
 #include "rocksdb/table.h"
 #include "rocksdb/vec_lorc.h"
 #include "rocksdb/vec_range.h"
+#include "rocksdb/ref_vec_range.h"
 
 using namespace std;
 using namespace rocksdb;
@@ -22,17 +23,19 @@ bool do_get = false;
 bool do_update = false;
 
 bool enable_blob = true;
+bool enable_blob_cache = false;
 bool enable_lorc = true;
+bool enable_timer = true;
 
 // size_t block_cache_size = 0; // 0MB
 // size_t block_cache_size = 32 * 1024 * 1024; // 32MB
 // size_t block_cache_size = 1024 * 1024 * 1024; // 1GB
 size_t block_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
 
-size_t blob_cache_size = 0; // 0MB
+// size_t blob_cache_size = 0; // 0MB
 // size_t blob_cache_size = 8 * 1024 * 1024; // 32MB
 // size_t blob_cache_size = 1024 * 1024 * 1024; // 1GB
-// size_t blob_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
+size_t blob_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
 
 size_t range_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
 
@@ -78,7 +81,7 @@ std::string gen_value(int key) {
 }
 
 void execute_insert(DB* db, Options options) {
-    auto start = high_resolution_clock::now();
+    auto start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
     // Insert key-value pairs into database
     for (const auto& pair : keyValuePairs) {
         const std::string& key = pair.first;
@@ -94,27 +97,37 @@ void execute_insert(DB* db, Options options) {
         }
     }
     
-    auto end = high_resolution_clock::now();
-    duration<double> time_span = duration_cast<duration<double>>(end - start);
-    cout << "Insert time: " << time_span.count() << " seconds" << endl;
+    if (enable_timer) {
+        auto end = high_resolution_clock::now();
+        duration<double> time_span = duration_cast<duration<double>>(end - start);
+        cout << "Insert time: " << time_span.count() << " seconds" << endl;
+    }
 }
 
 void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int len = -1) {
-    auto start = high_resolution_clock::now();
+    auto start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
     if (len == -1) {
         len = end_key - start_key + 1;
     }
+
     const Snapshot* snapshot = db->GetSnapshot();
     ReadOptions read_options;
     read_options.snapshot = snapshot;
     Iterator* it = db->NewIterator(read_options);
     SequenceNumber seq_num = snapshot->GetSequenceNumber();
 
-    SliceVecRange slice_vec_range(true);
-    slice_vec_range.reserve(len);
+    ReferringSliceVecRange ref_slice_vec_range(true);
+    ref_slice_vec_range.reserve(len);
+    std::vector<std::string> internal_key_str_vec;
+    internal_key_str_vec.reserve(len);
+    std::vector<std::string> value_str_vec;
+    value_str_vec.reserve(len);
     
     // Time tracking for ToString operations
     duration<double> toString_time(0);
+    duration<double> next_time(0); // Time tracking for Next operations
+    duration<double> internalKey_time(0); // Time tracking for internal key generation
+    duration<double> emplace_time(0); // Time tracking for ref_slice_vec_range.emplace
 
     int i = 0;
     if (scan_start_key != "" && !scan_start_key.empty()) {
@@ -131,71 +144,119 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
     int stringBlockNum = 1;
     long long diffSum = 0;
     const char* last_str_addr = nullptr;
-    for (; it->Valid(); it->Next()) {
+    int lastPrintedPercent = -1;
+    for (; it->Valid();) {
         Slice key_slice = it->key();
         // TODO(jr): avoid internal key representation outside
-        std::string internal_key_str = db->GetInternalKeyOfValueTypeStr(key_slice, seq_num);
+        if (enable_lorc) {
+            auto internalKey_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
+            internal_key_str_vec.emplace_back(db->GetInternalKeyOfValueTypeStr(key_slice, seq_num));
+            if (enable_timer) {
+                auto internalKey_end = high_resolution_clock::now();
+                internalKey_time += duration_cast<duration<double>>(internalKey_end - internalKey_start);
+            }
+        }
         
         // Start timing
-        auto toString_start = high_resolution_clock::now();
-        std::string value = it->value().ToString();
-        auto toString_end = high_resolution_clock::now();
+        auto toString_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
+        value_str_vec.emplace_back(it->value().ToString());
+        // std::string value_str = value.ToString();
+        if (enable_lorc) {
+            auto emplace_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
+            ref_slice_vec_range.emplace(Slice(internal_key_str_vec.back()), Slice(value_str_vec.back()));
+            if (enable_timer) {
+                auto emplace_end = high_resolution_clock::now();
+                emplace_time += duration_cast<duration<double>>(emplace_end - emplace_start);
+            }
+            // slice_vec_range.emplaceMoved(internal_key_str, value_str);
+        }
+        if (enable_timer) {
+            auto toString_end = high_resolution_clock::now();
+            toString_time += duration_cast<duration<double>>(toString_end - toString_start);
+        }
 
         // print the first 10 value str address
-        if (printStrAddrNum-- > 0) {
-            std::cout << "key = " << internal_key_str << std::endl;
-            const char* str_addr = it->value().GetDataAddress();
-            const char* scan_value_addr = value.data();
-            std::cout << "  iter value str addr: " << (void*)str_addr << std::endl;
-            std::cout << "  scan value str addr: " << (void*)scan_value_addr << std::endl;
-            if (last_str_addr != nullptr ) {
-                // print the diff of the address
-                std::ptrdiff_t addr_diff = str_addr - last_str_addr;
-                std::cout << "  Diff: " << addr_diff << " bytes" << std::endl;
-                diffSum += addr_diff - VALUE_LEN;
-                if (addr_diff > 4200) {
-                    stringBlockNum++;
-                }
-            }
-            last_str_addr = str_addr;
-        }
-
-        // Accumulate timing
-        toString_time += duration_cast<duration<double>>(toString_end - toString_start);
-       
-        if (enable_lorc) {
-            slice_vec_range.emplaceMoved(internal_key_str, value);
-        }
+        // if (printStrAddrNum-- > 0) {
+        //     std::cout << "key = " << internal_key_str_vec.back() << std::endl;
+        //     const char* str_addr = it->value().GetDataAddress();
+        //     const char* scan_value_addr = value.data();
+        //     std::cout << "  iter value str addr: " << (void*)str_addr << std::endl;
+        //     std::cout << "  scan value str addr: " << (void*)scan_value_addr << std::endl;
+        //     if (last_str_addr != nullptr ) {
+        //         // print the diff of the address
+        //         std::ptrdiff_t addr_diff = str_addr - last_str_addr;
+        //         std::cout << "  Diff: " << addr_diff << " bytes" << std::endl;
+        //         diffSum += addr_diff - VALUE_LEN;
+        //         if (addr_diff > 4200) {
+        //             stringBlockNum++;
+        //         }
+        //     }
+        //     last_str_addr = str_addr;
+        // }
         
-        // std::cout << i << ": " << key  << std::endl;
+        // print in % (i/len) every 1%
+        // int percent = 100 * ((double)i / len);
+        // if ((percent != lastPrintedPercent) && (percent % 1 == 0)) {
+        //     std::cout << "Progress: " << percent << "%" << std::endl;
+        //     lastPrintedPercent = percent;
+        // }
         if (++i >= len) {
             break;
+        }
+
+        // Time tracking for Next operations
+        auto next_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
+        it->Next();
+        if (enable_timer) {
+            auto next_end = high_resolution_clock::now();
+            // Accumulate Next operation time
+            next_time += duration_cast<duration<double>>(next_end - next_start);
         }
     }
 
     // print stringBlockNum and diffSum
-    std::cout << "  stringBlockNum: " << stringBlockNum << std::endl;
-    std::cout << "  diffSum: " << diffSum << " bytes" << std::endl;
+    if (printStrAddrNum > 0) {
+        std::cout << "\tstringBlockNum: " << stringBlockNum << std::endl;
+        std::cout << "\tdiffSum: " << diffSum << " bytes" << std::endl;
+    }
 
-    if (enable_lorc && slice_vec_range.length() != (size_t)len) {
-        std::cout << "slice_vec_range.size = " << slice_vec_range.length() << std::endl;
+    if (enable_lorc && ref_slice_vec_range.length() != (size_t)len) {
+        std::cout << "\tslice_vec_range.size = " << ref_slice_vec_range.length() << std::endl;
         assert(false);
     }
 
     // lorc put range
+    // set to 0
+    duration<double> putRange_time{0};
     if (enable_lorc) {
-        options.range_cache->putRange(std::move(slice_vec_range)); 
+        auto putRange_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
+        options.range_cache->putRange(std::move(ref_slice_vec_range)); 
+        if (enable_timer) {
+            auto putRange_end = high_resolution_clock::now();
+            putRange_time = duration_cast<duration<double>>(putRange_end - putRange_start);
+        }
     }
 
     delete it;
-    auto end = high_resolution_clock::now();
-    duration<double> time_span = duration_cast<duration<double>>(end - start);
-    cout << "Scan time: " << time_span.count() << " seconds" << endl;
-    cout << "ToString time: " << toString_time.count() << " seconds" << endl;
+
+    if (enable_timer) {
+        auto end = high_resolution_clock::now();
+        duration<double> time_span = duration_cast<duration<double>>(end - start);
+        cout << "\tScan total time: " << time_span.count() << " seconds" << endl;
+        cout << "\t\tToString(and add to range if needed) total time: " << toString_time.count() << " seconds" << endl;
+        cout << "\t\tNext() of iterator total time: " << next_time.count() << " seconds" << endl;
+        if (enable_lorc) {
+            duration<double> lorc_write_total_time = internalKey_time + emplace_time + putRange_time;
+            cout << "\t\tLORC write total time: " << lorc_write_total_time.count() << " seconds" << endl;
+            cout << "\t\t\tInternal key generation total time: " << internalKey_time.count() << " seconds" << endl;
+            cout << "\t\t\tSlice emplace total time: " << emplace_time.count() << " seconds" << endl;
+            cout << "\t\t\tLorc putRange time: " << putRange_time.count() << " seconds" << endl;
+        }
+    }
 }
 
 void execute_get(DB* db, Options options) {
-    auto start = high_resolution_clock::now();
+    auto start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
     for (const auto& pair : keyValuePairs) {
         const std::string &key = pair.first;
         std::string value = pair.second;
@@ -204,9 +265,11 @@ void execute_get(DB* db, Options options) {
             cerr << "Failed to get key: " << key << ", error: " << status.ToString() << endl;
         }
     }
-    auto end = high_resolution_clock::now();
-    duration<double> time_span = duration_cast<duration<double>>(end - start);
-    cout << "Get time: " << time_span.count() << " seconds" << endl;
+    if (enable_timer) {
+        auto end = high_resolution_clock::now();
+        duration<double> time_span = duration_cast<duration<double>>(end - start);
+        cout << "Get time: " << time_span.count() << " seconds" << endl;
+    }
 }
 
 // for test
@@ -261,8 +324,10 @@ int main() {
         options.blob_file_size = 64 * 1024 * 1024;  
         options.enable_blob_garbage_collection = true;
         options.blob_garbage_collection_age_cutoff = 0.25;
-        blob_cache = rocksdb::NewLRUCache(blob_cache_size); 
-        options.blob_cache = blob_cache;
+        if (enable_blob_cache) {
+            blob_cache = rocksdb::NewLRUCache(blob_cache_size); 
+            options.blob_cache = blob_cache;
+        }
     }
 
     // Configure LORC if enabled

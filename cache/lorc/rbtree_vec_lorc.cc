@@ -18,78 +18,77 @@ RBTreeSliceVecRangeCache::~RBTreeSliceVecRangeCache() {
     lengthMap.clear();
 }
 
-void RBTreeSliceVecRangeCache::putRange(SliceVecRange&& newRange) {
+void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
     std::chrono::high_resolution_clock::time_point start_time;
     if (this->enable_statistic) {
         start_time = std::chrono::high_resolution_clock::now();
     }
     
-    // Merge strategy: new SliceVecRange data takes priority, old SliceVecRange data keeps non-overlapping parts
-    std::vector<SliceVecRange> leftRanges;  // Store the left part of split ranges (at most one)
-    std::vector<SliceVecRange> rightRanges; // Store the right part of split ranges (at most one)
-    std::string newRangeStr = newRange.toString();
+    std::vector<SliceVecRange> mergedRanges; 
+    std::string newRangeStr = newRefRange.toString();
 
-    // Find the first SliceVecRange that may overlap with newRange
-    auto it = orderedRanges.upper_bound(newRange);
+    // Find the first SliceVecRange that may overlap with newRefRange
+    auto it = orderedRanges.upper_bound(SliceVecRange(newRefRange.startKey()));
     if (it != orderedRanges.begin()) {
         --it;
     }
-    while (it != orderedRanges.end() && it->startKey() <= newRange.endKey()) {
-        if (it->endKey() < newRange.startKey()) {
+    Slice lastStartKey = newRefRange.startKey();
+    bool leftIncluded = true;
+    while (it != orderedRanges.end() && it->startKey() <= newRefRange.endKey()) {
+        if (it->endKey() < newRefRange.startKey()) {
             // no overlap
             ++it;
             continue;
         }
 
-        // Handle left split: if existing SliceVecRange starts before newRange
-        if (it->startKey() < newRange.startKey() && it->endKey() >= newRange.startKey()) {
-            int leftSplitIdx = it->find(newRange.startKey()) - 1;
-            if (leftSplitIdx >= 0 && (size_t)leftSplitIdx < it->length()) {
-                leftRanges.emplace_back(std::move(it->subRangeView(0, leftSplitIdx)));
+        // Handle left split: if existing SliceVecRange starts before newRefRange
+        // If exists, it must be the first branch matched in the loop
+        if (it->startKey() < newRefRange.startKey() && it->endKey() >= newRefRange.startKey()) {
+            lastStartKey = it->endKey();
+            leftIncluded = false;
+        } else if (it->startKey() <= newRefRange.endKey()) {
+            // overlapping without left split
+            // masterialize the newRefRange of (lastStartKey, it->startKey())
+            assert(lastStartKey <= it->startKey());
+            if (lastStartKey < it->startKey()) {
+                SliceVecRange nonOverlappingSubRange = newRefRange.dumpSubRange(lastStartKey, it->startKey(), leftIncluded, false);
+                if (nonOverlappingSubRange.isValid() && nonOverlappingSubRange.length() > 0) {
+                    mergedRanges.emplace_back(std::move(nonOverlappingSubRange));
+                }
             }
+            lastStartKey = it->endKey();
+            leftIncluded = false;
         }
 
-        // Handle right split: if existing SliceVecRange ends after newRange
-        if (it->endKey() > newRange.endKey() && it->startKey() <= newRange.endKey()) {
-            int rightSplitIdx = it->find(newRange.endKey());
-            if (rightSplitIdx >= 0 && (size_t)rightSplitIdx < it->length() && it->keyAt(rightSplitIdx) == newRange.endKey()) {
-                rightSplitIdx++;
-            }
-            if (rightSplitIdx >= 0 && (size_t)rightSplitIdx < it->length()) {
-                rightRanges.emplace_back(std::move(it->subRangeView(rightSplitIdx, it->length() - 1)));
-            }
-        }
-
-        // Remove the old SliceVecRange from both containers
-        auto SliceVecRange = lengthMap.equal_range(it->length());
-        for (auto itt = SliceVecRange.first; itt != SliceVecRange.second; ++itt) {
+        // Remove the old overlapping SliceVecRange from both containers
+        auto sliceVecRangeStartKeys = lengthMap.equal_range(it->length());
+        for (auto itt = sliceVecRangeStartKeys.first; itt != sliceVecRangeStartKeys.second; ++itt) {
             if (itt->second == it->startKey()) {
                 lengthMap.erase(itt);
                 break;
             }
         }
         this->current_size -= it->byteSize();
-        it = orderedRanges.erase(it);
+        
+        // Move the old SliceVecRange in range cache to mergedRanges, and remove it (later merged as one large range into the range cache)
+        // Using extract() without data copy
+        auto current = it++;
+        auto node = orderedRanges.extract(current);
+        mergedRanges.emplace_back(std::move(node.value()));
+    }
+
+    // handle the last non-overlapping subrange if exists (case that has no right split)
+    if (leftIncluded ? lastStartKey <= newRefRange.endKey() : lastStartKey < newRefRange.endKey()) {
+        SliceVecRange nonOverlappingSubRange = newRefRange.dumpSubRange(lastStartKey, newRefRange.endKey(), leftIncluded, true);
+        if (nonOverlappingSubRange.isValid() && nonOverlappingSubRange.length() > 0) {
+            mergedRanges.emplace_back(std::move(nonOverlappingSubRange));
+        }
     }
     
-    // Concatenate: left ranges + newRange + right ranges
-    if (leftRanges.size() > 1 || rightRanges.size() > 1) {
-        logger.error("Left or right ranges size is greater than 1");
-        return;
+    // print mergedRanges
+    for (auto& range : mergedRanges) {
+        logger.debug("Merged SliceVecRange: " + range.toString());
     }
-    
-    std::vector<SliceVecRange> mergedRanges;
-    mergedRanges.reserve(leftRanges.size() + 1 + rightRanges.size());
-    
-    // Use emplace_back and std::move to avoid unnecessary copies
-    for (SliceVecRange& SliceVecRange : leftRanges) {
-        mergedRanges.emplace_back(std::move(SliceVecRange));
-    }
-    mergedRanges.emplace_back(std::move(newRange));
-    for (SliceVecRange& SliceVecRange : rightRanges) {
-        mergedRanges.emplace_back(std::move(SliceVecRange));
-    }
-    
     SliceVecRange mergedRange = SliceVecRange::concatRangesMoved(mergedRanges);
     // string underlying data of mergedRanges is moved
     

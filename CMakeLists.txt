@@ -643,6 +643,7 @@ find_package(Threads REQUIRED)
 set(SOURCES
         cache/lorc/rbtree_vec_lorc_iter.cc
         cache/lorc/rbtree_vec_lorc.cc
+        cache/lorc/ref_vec_range.cc
         cache/lorc/vec_lorc.cc
         cache/lorc/vec_range.cc
         cache/cache.cc
@@ -658,7 +659,7 @@ set(SOURCES
         cache/secondary_cache_adapter.cc
         cache/sharded_cache.cc
         cache/tiered_secondary_cache.cc
-        db/db.cc # TODO(jr): remove this source file
+        db/db.cc # TODO(jr): It's for get internal key. Should remove this source file
         db/arena_wrapped_db_iter.cc
         db/attribute_group_iterator_impl.cc
         db/blob/blob_contents.cc

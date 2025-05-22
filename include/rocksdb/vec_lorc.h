@@ -7,6 +7,7 @@
 #include <memory>
 #include <chrono>
 #include "rocksdb/vec_range.h"
+#include "rocksdb/ref_vec_range.h"
 
 namespace ROCKSDB_NAMESPACE {
 class LorcLogger {
@@ -123,10 +124,12 @@ public:
     virtual ~LogicallyOrderedSliceVecRangeCache();
 
     /**
-     * Add a new SliceVecRange to the cache, merging with existing overlapping ranges.
-     * The new SliceVecRange's data takes precedence over existing data in overlapping regions.
+     * Try to merge a new range with existing overlapping ranges.
+     * It will try to concat overlapping ranges into one large range
+     * Only the non-overlapping subranges of newRefRange will be materialized 
+     * (slices called ToString() to generate a SliceVecRange to be merged).
      */
-    virtual void putRange(SliceVecRange&& SliceVecRange) = 0;
+    virtual void putRange(ReferringSliceVecRange&& newRefRange) = 0;
 
     /**
      * Update an entry in existing ranges
