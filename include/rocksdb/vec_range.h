@@ -25,6 +25,7 @@ private:
     mutable int timestamp;
 
     // Start position for subrange operations (default -1). If >= 0, indicates this is a subrange view, and only used in concatRangesMoved
+    // TODO(jr): remove subrange view
     int subrange_view_start_pos; 
 
     private:

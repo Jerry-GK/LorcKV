@@ -277,6 +277,7 @@ bool SliceVecRange::update(const Slice& key, const Slice& value) const {
     return false;
 }
 
+// TODO(jr): remove subrange view
 SliceVecRange SliceVecRange::subRangeView(size_t start_index, size_t end_index) const {
     assert(valid && range_length > end_index && subrange_view_start_pos == -1);
     // the only code to create non-negative subrange_view_start_pos
@@ -336,39 +337,50 @@ SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& range
     if (ranges.empty()) {
         return SliceVecRange(false);
     }
+    if (ranges.size() == 1) {
+        return ranges[0];
+    }
     
+    // 找到最长的 SliceVecRange
+    size_t max_length_index = 0;
+    size_t max_length = 0;
     size_t total_length = 0;
-    for (const auto& sliceVecRange : ranges) {
-        total_length += sliceVecRange.length();
+    
+    for (size_t i = 0; i < ranges.size(); i++) {
+        size_t current_length = ranges[i].length();
+        total_length += current_length;
+        if (current_length > max_length) {
+            max_length = current_length;
+            max_length_index = i;
+        }
     }
     
-    auto new_data = std::make_shared<RangeData>();
-    new_data->keys.reserve(total_length);
-    new_data->values.reserve(total_length);
+    // take the longest range as the base
+    auto base_data = ranges[max_length_index].data;
+    base_data->keys.reserve(total_length);
+    base_data->values.reserve(total_length);
 
-    // Move data from each SliceVecRange into the new combined SliceVecRange
-    for (auto& sliceVecRange : ranges) {
-        auto src_data = sliceVecRange.data; 
-        int subrange_view_start_pos = sliceVecRange.subrange_view_start_pos;
-        int range_start = 0;
-        if (subrange_view_start_pos != -1) {
-            range_start = subrange_view_start_pos;
+    for (size_t i = 0; i < ranges.size(); i++) {
+        if (i < max_length_index) {
+            base_data->keys.insert(base_data->keys.begin(),
+                std::make_move_iterator(ranges[i].data->keys.begin()),
+                std::make_move_iterator(ranges[i].data->keys.end()));
+            base_data->values.insert(base_data->values.begin(),
+                std::make_move_iterator(ranges[i].data->values.begin()),
+                std::make_move_iterator(ranges[i].data->values.end()));
+        } else if (i == max_length_index) {
+            continue;
+        } else if (i > max_length_index) {
+            base_data->keys.insert(base_data->keys.end(),
+                std::make_move_iterator(ranges[i].data->keys.begin()),
+                std::make_move_iterator(ranges[i].data->keys.end()));
+            base_data->values.insert(base_data->values.end(),
+                std::make_move_iterator(ranges[i].data->values.begin()),
+                std::make_move_iterator(ranges[i].data->values.end()));
         }
-        size_t len = sliceVecRange.length();
-        
-        // Using std::make_move_iterator to move strings from source containers to new container
-        // This operation "steals" content from source strings, leaving them as empty strings
-        // Even if source SliceVecRange objects are destroyed later, the moved data is safely transferred
-        // This avoids data copying, improves performance, and ensures proper data lifetime management
-        new_data->keys.insert(new_data->keys.end(),
-            std::make_move_iterator(src_data->keys.begin() + range_start),
-            std::make_move_iterator(src_data->keys.begin() + range_start + len));
-        new_data->values.insert(new_data->values.end(),
-            std::make_move_iterator(src_data->values.begin() + range_start),
-            std::make_move_iterator(src_data->values.begin() + range_start + len));
     }
-
-    return SliceVecRange(new_data, -1, total_length);
+    
+    return SliceVecRange(base_data, -1, total_length);
 }
 
 void SliceVecRange::reserve(size_t len) {
