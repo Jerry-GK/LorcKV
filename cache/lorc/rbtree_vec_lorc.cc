@@ -90,18 +90,20 @@ void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
         logger.debug("Merged SliceVecRange: " + range.toString());
     }
 
-    // SliceVecRange mergedRange = SliceVecRange::concatRangesMoved(mergedRanges);
-    // // string underlying data of mergedRanges is moved
-    // // Add the new merged SliceVecRange to both containers
-    // lengthMap.emplace(mergedRange.length(), mergedRange.startUserKey().ToString());
-    // this->current_size += mergedRange.byteSize();
-    // orderedRanges.emplace(std::move(mergedRange));
-    
     // Add the new merged SliceVecRange to both containers
-    for (auto& mergedRange : mergedRanges) {
+    // TODO(jr): figure out concat(merge) or not
+    if (this->concatContinuousRanges) {
+        // string underlying data of mergedRanges is moved
+        SliceVecRange mergedRange = SliceVecRange::concatRangesMoved(mergedRanges);
         lengthMap.emplace(mergedRange.length(), mergedRange.startUserKey().ToString());
         this->current_size += mergedRange.byteSize();
         orderedRanges.emplace(std::move(mergedRange));
+    } else {
+        for (auto& mergedRange : mergedRanges) {
+            lengthMap.emplace(mergedRange.length(), mergedRange.startUserKey().ToString());
+            this->current_size += mergedRange.byteSize();
+            orderedRanges.emplace(std::move(mergedRange));
+        }
     }
 
     // Trigger eviction if cache size exceeds limit

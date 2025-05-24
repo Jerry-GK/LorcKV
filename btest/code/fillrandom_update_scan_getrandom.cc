@@ -116,17 +116,17 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
     Iterator* it = db->NewIterator(read_options);
     SequenceNumber seq_num = snapshot->GetSequenceNumber();
 
-    ReferringSliceVecRange ref_slice_vec_range(true);
-    ref_slice_vec_range.reserve(len);
-    std::vector<std::string> internal_key_str_vec;
-    internal_key_str_vec.reserve(len);
+    std::vector<std::string> userkey_str_vec;
     std::vector<std::string> value_str_vec;
+    ReferringSliceVecRange ref_slice_vec_range(true, seq_num);
+
+    ref_slice_vec_range.reserve(len);
+    userkey_str_vec.reserve(len);
     value_str_vec.reserve(len);
     
     // Time tracking for ToString operations
     duration<double> toString_time(0);
     duration<double> next_time(0); // Time tracking for Next operations
-    duration<double> internalKey_time(0); // Time tracking for internal key generation
     duration<double> emplace_time(0); // Time tracking for ref_slice_vec_range.emplace
 
     int i = 0;
@@ -146,29 +146,19 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
     const char* last_str_addr = nullptr;
     int lastPrintedPercent = -1;
     for (; it->Valid();) {
-        Slice key_slice = it->key();
-        // TODO(jr): avoid internal key representation outside
-        if (enable_lorc) {
-            auto internalKey_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
-            internal_key_str_vec.emplace_back(db->GetInternalKeyOfValueTypeStr(key_slice, seq_num));
-            if (enable_timer) {
-                auto internalKey_end = high_resolution_clock::now();
-                internalKey_time += duration_cast<duration<double>>(internalKey_end - internalKey_start);
-            }
-        }
-        
         // Start timing
         auto toString_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
+        userkey_str_vec.emplace_back(it->key().ToString());
         value_str_vec.emplace_back(it->value().ToString());
+
         // std::string value_str = value.ToString();
         if (enable_lorc) {
             auto emplace_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
-            ref_slice_vec_range.emplace(Slice(internal_key_str_vec.back()), Slice(value_str_vec.back()));
+            ref_slice_vec_range.emplace(Slice(userkey_str_vec.back()), Slice(value_str_vec.back()));
             if (enable_timer) {
                 auto emplace_end = high_resolution_clock::now();
                 emplace_time += duration_cast<duration<double>>(emplace_end - emplace_start);
             }
-            // slice_vec_range.emplaceMoved(internal_key_str, value_str);
         }
         if (enable_timer) {
             auto toString_end = high_resolution_clock::now();
@@ -177,7 +167,7 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
 
         // print the first 10 value str address
         // if (printStrAddrNum-- > 0) {
-        //     std::cout << "key = " << internal_key_str_vec.back() << std::endl;
+        //     std::cout << "key = " << userkey_str_vec.back() << std::endl;
         //     const char* str_addr = it->value().GetDataAddress();
         //     const char* scan_value_addr = value.data();
         //     std::cout << "  iter value str addr: " << (void*)str_addr << std::endl;
@@ -246,9 +236,8 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
         cout << "\t\tToString(and add to range if needed) total time: " << toString_time.count() << " seconds" << endl;
         cout << "\t\tNext() of iterator total time: " << next_time.count() << " seconds" << endl;
         if (enable_lorc) {
-            duration<double> lorc_write_total_time = internalKey_time + emplace_time + putRange_time;
+            duration<double> lorc_write_total_time = emplace_time + putRange_time;
             cout << "\t\tLORC write total time: " << lorc_write_total_time.count() << " seconds" << endl;
-            cout << "\t\t\tInternal key generation total time: " << internalKey_time.count() << " seconds" << endl;
             cout << "\t\t\tSlice emplace total time: " << emplace_time.count() << " seconds" << endl;
             cout << "\t\t\tLorc putRange time: " << putRange_time.count() << " seconds" << endl;
         }

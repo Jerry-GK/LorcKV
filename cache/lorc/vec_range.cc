@@ -89,18 +89,13 @@ private:
     bool stop_;
 };
 
-// Threshold for asynchronous resource release (in bytes)
 // TODO(jr): find out is it necessary to deconstruct SliceVecRange asynchronously
-static const bool enable_async_release = false;
-static const size_t kAsyncReleaseThreshold = 16 * 1024 * 1024; // 16MB
-
 SliceVecRange::SliceVecRange(bool valid_) {
     this->data = std::make_shared<RangeData>();
     this->valid = valid_;
     this->range_length = 0;
     this->byte_size = 0;
     this->timestamp = 0;
-    this->subrange_view_start_pos = -1;
     if (valid) {
         data = std::make_shared<RangeData>();
     }
@@ -128,7 +123,6 @@ SliceVecRange::SliceVecRange(const SliceVecRange& other) {
     this->range_length = other.range_length;
     this->byte_size = other.byte_size;
     this->timestamp = other.timestamp;
-    this->subrange_view_start_pos = other.subrange_view_start_pos;
     
     if (other.valid && other.data) {
         this->data = std::make_shared<RangeData>();
@@ -142,12 +136,10 @@ SliceVecRange::SliceVecRange(SliceVecRange&& other) noexcept {
     valid = other.valid;
     range_length = other.range_length;
     byte_size = other.byte_size;
-    subrange_view_start_pos = other.subrange_view_start_pos;
     timestamp = other.timestamp;
     
     other.valid = false;
     other.range_length = 0;
-    other.subrange_view_start_pos = -1;
     other.timestamp = 0;
 }
 
@@ -155,7 +147,6 @@ SliceVecRange::SliceVecRange(SliceVecRange&& other) noexcept {
 //     data = std::make_shared<RangeData>();
 //     data->internal_keys = std::move(internal_keys);
 //     data->values = std::move(values);
-//     this->subrange_view_start_pos = -1;
 //     this->valid = true;
 //     this->range_length = range_length;
 //     this->timestamp = 0;
@@ -165,16 +156,14 @@ SliceVecRange::SliceVecRange(Slice startUserKey) {
     data = std::make_shared<RangeData>();
     data->internal_keys.push_back(startUserKey.ToString());
     data->internal_keys[0].append(internal_key_extra_bytes, '\0');
-    this->subrange_view_start_pos = -1;
     this->valid = true;
     this->range_length = 1;
     this->byte_size = data->internal_keys[0].size();
     this->timestamp = 0;
 }
 
-SliceVecRange::SliceVecRange(std::shared_ptr<RangeData> data_, int subrange_view_start_pos_, size_t range_length_) {
+SliceVecRange::SliceVecRange(std::shared_ptr<RangeData> data_, size_t range_length_) {
     this->data = data_;
-    this->subrange_view_start_pos = subrange_view_start_pos_;
     this->valid = true;
     this->range_length = range_length_;
     // TODO(jr): avoid calculating byte_size in the constructor
@@ -194,7 +183,6 @@ SliceVecRange& SliceVecRange::operator=(const SliceVecRange& other) {
         this->range_length = other.range_length;
         this->byte_size = other.byte_size;
         this->timestamp = other.timestamp;
-        this->subrange_view_start_pos = other.subrange_view_start_pos;
         
         if (other.valid && other.data) {
             this->data = std::make_shared<RangeData>();
@@ -217,45 +205,43 @@ SliceVecRange& SliceVecRange::operator=(SliceVecRange&& other) noexcept {
         valid = other.valid;
         range_length = other.range_length;
         byte_size = other.byte_size;
-        subrange_view_start_pos = other.subrange_view_start_pos;
         timestamp = other.timestamp;
         
         // Reset other object's state
         other.valid = false;
         other.range_length = 0;
-        other.subrange_view_start_pos = -1;
         other.timestamp = 0;
     }
     return *this;
 }
 
 Slice SliceVecRange::startUserKey() const {
-    assert(valid && range_length > 0 && data->internal_keys.size() > internal_key_extra_bytes && subrange_view_start_pos == -1);
+    assert(valid && range_length > 0 && data->internal_keys.size() > internal_key_extra_bytes);
     return Slice(data->internal_keys[0].data(), data->internal_keys[0].size() - internal_key_extra_bytes);
 }
 
 Slice  SliceVecRange::endUserKey() const {
-    assert(valid && range_length > 0 && data->internal_keys.size() > internal_key_extra_bytes && subrange_view_start_pos == -1);
+    assert(valid && range_length > 0 && data->internal_keys.size() > internal_key_extra_bytes);
     return Slice(data->internal_keys[range_length - 1].data(), data->internal_keys[range_length - 1].size() - internal_key_extra_bytes);
 }  
 
 Slice SliceVecRange::startInternalKey() const {
-    assert(valid && range_length > 0 && data->internal_keys.size() > 0 && subrange_view_start_pos == -1);
+    assert(valid && range_length > 0 && data->internal_keys.size() > 0);
     return Slice(data->internal_keys[0]);
 }
 
 Slice  SliceVecRange::endInternalKey() const {
-    assert(valid && range_length > 0 && data->internal_keys.size() > 0 && subrange_view_start_pos == -1);
+    assert(valid && range_length > 0 && data->internal_keys.size() > 0);
     return Slice(data->internal_keys[range_length - 1]);
 }   
 
 Slice SliceVecRange::internalKeyAt(size_t index) const {
-    assert(valid && range_length > index && subrange_view_start_pos == -1);
+    assert(valid && range_length > index);
     return Slice(data->internal_keys[index]);
 }
 
 Slice SliceVecRange::valueAt(size_t index) const {
-    assert(valid && range_length > index && subrange_view_start_pos == -1);
+    assert(valid && range_length > index);
     return Slice(data->values[index]);
 }
 
@@ -280,7 +266,7 @@ void SliceVecRange::setTimestamp(int timestamp_) const {
 }
 
 bool SliceVecRange::update(const Slice& key, const Slice& value) const {
-    assert(valid && range_length > 0 && subrange_view_start_pos == -1);    
+    assert(valid && range_length > 0);    
     int index = find(key);
     if (index >= 0 && internalKeyAt(index) == key) {
         data->values[index] = value.ToString();
@@ -289,15 +275,8 @@ bool SliceVecRange::update(const Slice& key, const Slice& value) const {
     return false;
 }
 
-// TODO(jr): remove subrange view
-SliceVecRange SliceVecRange::subRangeView(size_t start_index, size_t end_index) const {
-    assert(valid && range_length > end_index && subrange_view_start_pos == -1);
-    // the only code to create non-negative subrange_view_start_pos
-    return SliceVecRange(data, start_index, end_index - start_index + 1);
-}
-
 void SliceVecRange::truncate(int targetLength) const {
-    assert(valid && range_length > 0 && data->internal_keys.size() > 0 && subrange_view_start_pos == -1);
+    assert(valid && range_length > 0 && data->internal_keys.size() > 0);
     if (targetLength < 0 || (size_t)targetLength > range_length) {
         assert(false);
         return;
@@ -313,7 +292,7 @@ void SliceVecRange::truncate(int targetLength) const {
 }
 
 int SliceVecRange::find(const Slice& key) const {
-    assert(valid && range_length > 0 && subrange_view_start_pos == -1);
+    assert(valid && range_length > 0);
     if (!valid || range_length == 0) {
         return -1;
     }
@@ -392,7 +371,7 @@ SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& range
         }
     }
     
-    return SliceVecRange(base_data, -1, total_length);
+    return SliceVecRange(base_data, total_length);
 }
 
 void SliceVecRange::reserve(size_t len) {
@@ -402,19 +381,19 @@ void SliceVecRange::reserve(size_t len) {
 }
 
 void SliceVecRange::emplace(const Slice& internal_key, const Slice& value) {
-    assert(valid && subrange_view_start_pos == -1);
+    assert(valid);
     data->internal_keys.emplace_back(internal_key.data(), internal_key.size());
     data->values.emplace_back(value.data(), value.size());
     range_length++;
     byte_size += internal_key.size() + value.size();
 }
 
-void SliceVecRange::emplaceMoved(std::string& internal_key, std::string& value) {
-    assert(valid && subrange_view_start_pos == -1);
-    data->internal_keys.emplace_back(std::move(internal_key));
-    data->values.emplace_back(std::move(value));
-    range_length++;
-    byte_size += data->internal_keys.back().size() + data->values.back().size();
-}
+// void SliceVecRange::emplaceMoved(std::string& internal_key, std::string& value) {
+//     assert(valid);
+//     data->internal_keys.emplace_back(std::move(internal_key));
+//     data->values.emplace_back(std::move(value));
+//     range_length++;
+//     byte_size += data->internal_keys.back().size() + data->values.back().size();
+// }
 
 }  // namespace ROCKSDB_NAMESPACE

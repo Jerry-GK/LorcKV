@@ -24,13 +24,8 @@ private:
     mutable bool valid;
     mutable int timestamp;
 
-    // Start position for subrange operations (default -1). If >= 0, indicates this is a subrange view, and only used in concatRangesMoved
-    // TODO(jr): remove subrange view
-    int subrange_view_start_pos; 
-
     private:
-    // construct by data pointer and subrange_view_start_pos, it's a subrange view if subrange_view_start_pos >= 0
-    SliceVecRange(std::shared_ptr<RangeData> data, int subrange_view_start_pos, size_t length);
+    SliceVecRange(std::shared_ptr<RangeData> data, size_t length);
 
 public:
     SliceVecRange(bool valid = false);
@@ -71,9 +66,6 @@ public:
 
     bool update(const Slice& key, const Slice& value) const;
 
-    // the origin SliceVecRange will be invalid after this operation (turn to a temp subrange view only for concatRangesMoved)
-    SliceVecRange subRangeView(size_t start_index, size_t end_index) const;
-
     // truncate in place
     void truncate(int length) const;
 
@@ -92,7 +84,9 @@ public:
         return startUserKey() < other.startUserKey();
     }
 
-    const static int internal_key_extra_bytes = 8;
+    static const int internal_key_extra_bytes = 8;
+    static const bool enable_async_release = false;
+    static const size_t kAsyncReleaseThreshold = 16 * 1024 * 1024; // Threshold for asynchronous resource release (in bytes)
 };
 
 }  // namespace ROCKSDB_NAMESPACE

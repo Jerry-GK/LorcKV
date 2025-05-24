@@ -37,6 +37,8 @@ private:
     std::set<SliceVecRange> orderedRanges;     // Container for ranges sorted by start key
     std::multimap<int, std::string> lengthMap;  // Container for ranges sorted by length (for victim selection)
     uint64_t cache_timestamp;          // Timestamp for LRU-like functionality
+
+    static const bool concatContinuousRanges = false; // Whether to concatenate continuous ranges at putRange
 };
 
 }  // namespace ROCKSDB_NAMESPACE

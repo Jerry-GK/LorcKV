@@ -157,7 +157,6 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
     const char* last_str_addr = nullptr;
     int lastPrintedPercent = -1;
     for (; it->Valid();) {
-        // TODO(jr): avoid internal key representation outside
         // Start timing
         auto toString_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
         userkey_str_vec.emplace_back(it->key().ToString());
