@@ -8,6 +8,7 @@
 #include <atomic>
 #include <iostream>
 #include "rocksdb/ref_vec_range.h"
+#include "db/dbformat.h"
 
 namespace ROCKSDB_NAMESPACE {
 
@@ -29,9 +30,10 @@ std::string ReferringSliceVecRange::ToStringPlain(std::string s) {
     return result;
 }
 
-ReferringSliceVecRange::ReferringSliceVecRange(bool valid_) {
+ReferringSliceVecRange::ReferringSliceVecRange(bool valid_, SequenceNumber seq_num_) {
     this->slice_data = std::make_shared<SliceRangeData>();
     this->valid = valid_;
+    this->seq_num = seq_num_;
     this->range_length = 0;
     if (valid) {
         slice_data = std::make_shared<SliceRangeData>();
@@ -45,6 +47,7 @@ ReferringSliceVecRange::~ReferringSliceVecRange() {
 ReferringSliceVecRange::ReferringSliceVecRange(const ReferringSliceVecRange& other) {
     // assert(false); // (it should not be called in RBTreeReferringSliceVecRangeCache)
     this->valid = other.valid;
+    this->seq_num = other.seq_num;
     this->range_length = other.range_length;
     
     if (other.valid && other.slice_data) {
@@ -57,6 +60,7 @@ ReferringSliceVecRange::ReferringSliceVecRange(const ReferringSliceVecRange& oth
 ReferringSliceVecRange::ReferringSliceVecRange(ReferringSliceVecRange&& other) noexcept {
     slice_data = std::move(other.slice_data);
     valid = other.valid;
+    seq_num = other.seq_num;
     range_length = other.range_length;
 
     other.valid = false;
@@ -68,6 +72,7 @@ ReferringSliceVecRange& ReferringSliceVecRange::operator=(const ReferringSliceVe
     // assert(false);
     if (this != &other) {
         this->valid = other.valid;
+        this->seq_num = other.seq_num;
         this->range_length = other.range_length;
         
         if (other.valid && other.slice_data) {
@@ -89,6 +94,7 @@ ReferringSliceVecRange& ReferringSliceVecRange::operator=(ReferringSliceVecRange
         // Move resources from other
         slice_data = std::move(other.slice_data);
         valid = other.valid;
+        seq_num = other.seq_num;
         range_length = other.range_length;
         
         // Reset other object's state
@@ -210,7 +216,8 @@ SliceVecRange ReferringSliceVecRange::dumpSubRange(const Slice& startKey, const 
     
     // actually copy the subrange data
     for (int i = start_pos; i <= end_pos; i++) {
-        result.emplace(keyAt(i), valueAt(i));
+        std::string internal_key_str = InternalKey(keyAt(i), seq_num, kTypeValue).Encode().ToString();
+        result.emplace(std::move(internal_key_str), valueAt(i));
     }
     
     return result;

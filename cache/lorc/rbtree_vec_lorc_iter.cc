@@ -88,7 +88,7 @@ void RBTreeSliceVecRangeCacheIterator::SeekForPrev(const Slice& target) {
         --current_range;
     }
     
-    if (current_range != cache->orderedRanges.end() && current_range->endKey() >= target) {
+    if (current_range != cache->orderedRanges.end() && current_range->endInternalKey() >= target) {
         current_index = current_range->find(target);
         if (current_index == -1) {
             current_index = current_range->length() - 1;
@@ -138,7 +138,7 @@ Slice RBTreeSliceVecRangeCacheIterator::key() const {
     if (!valid) {
         return empty_string;
     }
-    return current_range->keyAt(current_index);
+    return current_range->internalKeyAt(current_index);
 }
 
 Slice RBTreeSliceVecRangeCacheIterator::value() const {

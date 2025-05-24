@@ -5,6 +5,7 @@
 #include <memory>
 #include "rocksdb/slice.h"
 #include "rocksdb/vec_range.h"
+#include "rocksdb/types.h"
 
 namespace ROCKSDB_NAMESPACE {
 
@@ -18,15 +19,16 @@ namespace ROCKSDB_NAMESPACE {
 class ReferringSliceVecRange {
 private:
     struct SliceRangeData {
-        std::vector<Slice> slice_keys;
+        std::vector<Slice> slice_keys;  // user keys, dump with seq_num to internal keys in dumpSubRange()
         std::vector<Slice> slice_values;
     };
     std::shared_ptr<SliceRangeData> slice_data;
     mutable size_t range_length; // size in length
     mutable bool valid;
+    mutable SequenceNumber seq_num;
 
 public:
-    ReferringSliceVecRange(bool valid = false);
+    ReferringSliceVecRange(bool valid_, SequenceNumber seq_num_);
     ~ReferringSliceVecRange();      
     // create from string vector
     // deep copy

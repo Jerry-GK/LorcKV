@@ -9,8 +9,8 @@
 
 namespace ROCKSDB_NAMESPACE {
 
-RBTreeSliceVecRangeCache::RBTreeSliceVecRangeCache(size_t capacity_)
-    : LogicallyOrderedSliceVecRangeCache(capacity_) {
+RBTreeSliceVecRangeCache::RBTreeSliceVecRangeCache(size_t capacity_, bool enable_logger_)
+    : LogicallyOrderedSliceVecRangeCache(capacity_, enable_logger_) {
 }
 
 RBTreeSliceVecRangeCache::~RBTreeSliceVecRangeCache() {
@@ -34,8 +34,8 @@ void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
     }
     Slice lastStartKey = newRefRange.startKey();
     bool leftIncluded = true;
-    while (it != orderedRanges.end() && it->startKey() <= newRefRange.endKey()) {
-        if (it->endKey() < newRefRange.startKey()) {
+    while (it != orderedRanges.end() && it->startUserKey() <= newRefRange.endKey()) {
+        if (it->endUserKey() < newRefRange.startKey()) {
             // no overlap
             ++it;
             continue;
@@ -43,27 +43,27 @@ void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
 
         // Handle left split: if existing SliceVecRange starts before newRefRange
         // If exists, it must be the first branch matched in the loop
-        if (it->startKey() < newRefRange.startKey() && it->endKey() >= newRefRange.startKey()) {
-            lastStartKey = it->endKey();
+        if (it->startUserKey() < newRefRange.startKey() && it->endUserKey() >= newRefRange.startKey()) {
+            lastStartKey = it->endUserKey();
             leftIncluded = false;
-        } else if (it->startKey() <= newRefRange.endKey()) {
+        } else if (it->startUserKey() <= newRefRange.endKey()) {
             // overlapping without left split
-            // masterialize the newRefRange of (lastStartKey, it->startKey())
-            assert(lastStartKey <= it->startKey());
-            if (lastStartKey < it->startKey()) {
-                SliceVecRange nonOverlappingSubRange = newRefRange.dumpSubRange(lastStartKey, it->startKey(), leftIncluded, false);
+            // masterialize the newRefRange of (lastStartKey, it->startUserKey())
+            assert(lastStartKey <= it->startUserKey());
+            if (lastStartKey < it->startUserKey()) {
+                SliceVecRange nonOverlappingSubRange = newRefRange.dumpSubRange(lastStartKey, it->startUserKey(), leftIncluded, false);
                 if (nonOverlappingSubRange.isValid() && nonOverlappingSubRange.length() > 0) {
                     mergedRanges.emplace_back(std::move(nonOverlappingSubRange));
                 }
             }
-            lastStartKey = it->endKey();
+            lastStartKey = it->endUserKey();
             leftIncluded = false;
         }
 
         // Remove the old overlapping SliceVecRange from both containers
         auto sliceVecRangeStartKeys = lengthMap.equal_range(it->length());
         for (auto itt = sliceVecRangeStartKeys.first; itt != sliceVecRangeStartKeys.second; ++itt) {
-            if (itt->second == it->startKey()) {
+            if (itt->second == it->startUserKey()) {
                 lengthMap.erase(itt);
                 break;
             }
@@ -93,13 +93,13 @@ void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
     // SliceVecRange mergedRange = SliceVecRange::concatRangesMoved(mergedRanges);
     // // string underlying data of mergedRanges is moved
     // // Add the new merged SliceVecRange to both containers
-    // lengthMap.emplace(mergedRange.length(), mergedRange.startKey().ToString());
+    // lengthMap.emplace(mergedRange.length(), mergedRange.startUserKey().ToString());
     // this->current_size += mergedRange.byteSize();
     // orderedRanges.emplace(std::move(mergedRange));
     
     // Add the new merged SliceVecRange to both containers
     for (auto& mergedRange : mergedRanges) {
-        lengthMap.emplace(mergedRange.length(), mergedRange.startKey().ToString());
+        lengthMap.emplace(mergedRange.length(), mergedRange.startUserKey().ToString());
         this->current_size += mergedRange.byteSize();
         orderedRanges.emplace(std::move(mergedRange));
     }
@@ -135,7 +135,7 @@ bool RBTreeSliceVecRangeCache::updateEntry(const Slice& key, const Slice& value)
     if (it == orderedRanges.begin()) {
         it--;
     }
-    if (it == orderedRanges.end() || it->startKey() > key || it->endKey() < key) {
+    if (it == orderedRanges.end() || it->startUserKey() > key || it->endUserKey() < key) {
         return false;
     }
     return it->update(key, value);
@@ -149,7 +149,7 @@ void RBTreeSliceVecRangeCache::victim() {
     auto victimRangeStartKey = lengthMap.begin()->second;
     // find the SliceVecRange in orderedRanges and remove it
     auto it = orderedRanges.find(SliceVecRange(victimRangeStartKey));
-    if (it == orderedRanges.end() || it->startKey() != victimRangeStartKey) {
+    if (it == orderedRanges.end() || it->startUserKey() != victimRangeStartKey) {
         logger.error("Victim SliceVecRange not found in orderedRanges");
         assert(false);
         return;
@@ -167,14 +167,14 @@ void RBTreeSliceVecRangeCache::victim() {
         logger.debug("Truncate: " + it->toString());
         lengthMap.erase(lengthMap.find(it->length()));
         it->truncate(this->capacity);
-        lengthMap.emplace(it->length(), it->startKey().ToString());
+        lengthMap.emplace(it->length(), it->startUserKey().ToString());
         this->current_size = it->byteSize();
     }
 }
 
 void RBTreeSliceVecRangeCache::pinRange(std::string startKey) {
     auto it = orderedRanges.find(SliceVecRange(startKey));
-    if (it != orderedRanges.end() && it->startKey() == startKey) {
+    if (it != orderedRanges.end() && it->startUserKey() == startKey) {
         // update the timestamp
         it->setTimestamp(this->cache_timestamp++);
     }

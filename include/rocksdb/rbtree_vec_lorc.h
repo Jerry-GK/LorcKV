@@ -18,7 +18,7 @@ class Arena;
  */
 class RBTreeSliceVecRangeCache : public LogicallyOrderedSliceVecRangeCache {
 public:
-    RBTreeSliceVecRangeCache(size_t capacity);
+    RBTreeSliceVecRangeCache(size_t capacity, bool enable_logger_ = false);
     ~RBTreeSliceVecRangeCache() override;
 
     void putRange(ReferringSliceVecRange&& newRefRange) override;

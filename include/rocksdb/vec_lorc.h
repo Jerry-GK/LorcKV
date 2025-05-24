@@ -120,7 +120,7 @@ class Arena;
 
 class LogicallyOrderedSliceVecRangeCache {
 public:
-    LogicallyOrderedSliceVecRangeCache(size_t capacity_);
+    LogicallyOrderedSliceVecRangeCache(size_t capacity_, bool enable_logger_ = false);
     virtual ~LogicallyOrderedSliceVecRangeCache();
 
     /**

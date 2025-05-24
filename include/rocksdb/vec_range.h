@@ -15,7 +15,7 @@ namespace ROCKSDB_NAMESPACE {
 class SliceVecRange {
 private:
     struct RangeData {
-        std::vector<std::string> keys;
+        std::vector<std::string> internal_keys;  // internal keys actually, but internal seq number is not participated in comparasion
         std::vector<std::string> values;
     };
     std::shared_ptr<RangeData> data;
@@ -37,7 +37,7 @@ public:
     ~SliceVecRange();      
     // create from string vector
     // create a SliceVecRange with a single key-value pair, used for seekx
-    SliceVecRange(Slice startKey);
+    SliceVecRange(Slice startUserKey);
     // deep copy
     SliceVecRange(const SliceVecRange& other);
     // move copy
@@ -49,15 +49,18 @@ public:
     void reserve(size_t len);
 
     // empalce a key-value pair Slice copy
-    void emplace(const Slice& key, const Slice& value);
+    void emplace(const Slice& internal_key, const Slice& value);
 
     // empalce a key-value pair string in a moved pattern
-    void emplaceMoved(std::string& key, std::string& value);
+    void emplaceMoved(std::string& internal_key, std::string& value);
 
-    Slice startKey() const;
-    Slice endKey() const;
+    Slice startUserKey() const; // return in user key format slice, for range cache location
+    Slice endUserKey() const; // return in user key format slice, for range cache location
 
-    Slice keyAt(size_t index) const;
+    Slice startInternalKey() const;
+    Slice endInternalKey() const;
+
+    Slice internalKeyAt(size_t index) const;
     Slice valueAt(size_t index) const;
 
     size_t length() const;
@@ -84,10 +87,12 @@ public:
     // Merge ordered and non-overlapping ranges without deep copy
     static SliceVecRange concatRangesMoved(std::vector<SliceVecRange>& ranges);
 
-    // Define comparison operator, sort by startKey in ascending order
+    // Define comparison operator, sort by startUserKey in ascending order
     bool operator<(const SliceVecRange& other) const {
-        return startKey() < other.startKey();
+        return startUserKey() < other.startUserKey();
     }
+
+    const static int internal_key_extra_bytes = 8;
 };
 
 }  // namespace ROCKSDB_NAMESPACE
