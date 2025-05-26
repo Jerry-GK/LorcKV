@@ -3,7 +3,8 @@
 filename=$1
 mode=${2:-"profile"}
 build_type=${3:-"release"}
-postfix=${4:-""}
+dbtype=${4:-"blobdb"}
+postfix=${5:-""}
 
 if [ -z "$mode" ]; then
     echo "Usage: $0 <run|debug|profile>"
@@ -23,6 +24,21 @@ else
     echo "Invalid build type: $build_type. Please specify 'debug' or 'release'."
     exit 1
 fi
+
+if [ "$dbtype" != "blobdb" ] && [ "$dbtype" != "rocksdb" ]; then
+    echo "Invalid dbtype: $dbtype. Please specify 'blobdb' or 'rocksdb'."
+    exit 1
+fi
+
+# copy from source database to keep the source database unchanged 
+db_dir="./db/test_db_${dbtype}"
+# delete old database directory if it exists
+if [ -d "$db_dir" ]; then
+    echo "Removing old database directory: $db_dir"
+    sudo rm -rf "$db_dir"
+fi
+echo "Copying source database to $db_dir"
+sudo cp -r ./db/test_db_${dbtype}_random_3.5GB_source $db_dir
 
 # Use LD_LIBRARY_PATH instead of DYLD_LIBRARY_PATH on Linux
 export LD_LIBRARY_PATH=$build_dir:$LD_LIBRARY_PATH

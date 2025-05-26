@@ -738,13 +738,9 @@ class DB {
     return Status::NotSupported("GetEntity not supported");
   }
 
-  // Scan a range of data starting from start_key and return up to len key-value pairs.
-  // The results will be stored in values and statuses. The number of entries scanned 
-  // will be returned in scanned_count. If len is used up or if we reached the end
-  // of the database, scan_end_of_db will be set to true.
-  // 
-  // This method takes PinnableSlice as the value output parameter
-  // Scan variant that also returns keys
+  // Scan a range of data starting from start_key(from start if empty), terminated by len or end_key
+  // The results will be stored in keys and values vectors.
+  // It will use LORC(logically ordered range cache) to accelerate the scan.
   virtual Status Scan(const ReadOptions& options,
                     ColumnFamilyHandle* column_family,
                     const Slice& start_key,  // empty if start at first
@@ -754,9 +750,10 @@ class DB {
                     std::vector<std::string>* values) {
     assert(false);
     return Status::NotSupported(
-        "Scan(with lorc) interface not supported in this DB implementation. (Only support db_impl and blob_db_impl yet)");
+        "Scan(with lorc) interface not supported in this DB implementation. (Only support db_impl)");
   };  
   
+  // terminated by len
   virtual Status Scan(const ReadOptions& options,
                       const Slice& start_key,
                       size_t len,
@@ -765,12 +762,28 @@ class DB {
     return Scan(options, DefaultColumnFamily(), start_key, Slice(), len, keys, values);
   }
 
+  // terminated by end_key
   virtual Status Scan(const ReadOptions& options,
                       const Slice& start_key,
                       const Slice& end_key,
                       std::vector<std::string>* keys,
                       std::vector<std::string>* values) {
     return Scan(options, DefaultColumnFamily(), start_key, end_key, 0, keys, values);
+  }
+
+  // scan to end
+  virtual Status Scan(const ReadOptions& options,
+    const Slice& start_key,
+    std::vector<std::string>* keys,
+    std::vector<std::string>* values) {
+    return Scan(options, DefaultColumnFamily(), start_key, Slice(), 0, keys, values);
+  }
+
+  // scan all
+  virtual Status Scan(const ReadOptions& options,
+    std::vector<std::string>* keys,
+    std::vector<std::string>* values) {
+    return Scan(options, DefaultColumnFamily(), Slice(), Slice(), 0, keys, values);
   }
 
   //TODO(jr): more interfaces of Scan

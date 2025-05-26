@@ -89,7 +89,6 @@ private:
     bool stop_;
 };
 
-// TODO(jr): find out is it necessary to deconstruct SliceVecRange asynchronously
 SliceVecRange::SliceVecRange(bool valid_) {
     this->data = std::make_shared<RangeData>();
     this->valid = valid_;
@@ -101,6 +100,7 @@ SliceVecRange::SliceVecRange(bool valid_) {
     }
 }
 
+// TODO(jr): find out is it necessary to deconstruct SliceVecRange asynchronously
 SliceVecRange::~SliceVecRange() {
     // Check if there's enough data that needs asynchronous cleanup
     if (enable_async_release && data && data.use_count() == 1 && byte_size > kAsyncReleaseThreshold) {
@@ -216,12 +216,12 @@ SliceVecRange& SliceVecRange::operator=(SliceVecRange&& other) noexcept {
 }
 
 Slice SliceVecRange::startUserKey() const {
-    assert(valid && range_length > 0 && data->internal_keys.size() > internal_key_extra_bytes);
+    assert(valid && range_length > 0 && data->internal_keys.size() > 0 && data->internal_keys[0].size() > internal_key_extra_bytes);
     return Slice(data->internal_keys[0].data(), data->internal_keys[0].size() - internal_key_extra_bytes);
 }
 
 Slice  SliceVecRange::endUserKey() const {
-    assert(valid && range_length > 0 && data->internal_keys.size() > internal_key_extra_bytes);
+    assert(valid && range_length > 0 && data->internal_keys.size() > 0 && data->internal_keys[range_length - 1].size() > internal_key_extra_bytes);
     return Slice(data->internal_keys[range_length - 1].data(), data->internal_keys[range_length - 1].size() - internal_key_extra_bytes);
 }  
 

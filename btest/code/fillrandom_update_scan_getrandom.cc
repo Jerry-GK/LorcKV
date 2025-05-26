@@ -27,20 +27,29 @@ bool enable_blob_cache = false;
 bool enable_lorc = true;
 bool enable_timer = true;
 
+// block cache size will always be set to 64MB later if enable_blob is true
 // size_t block_cache_size = 0; // 0MB
-// size_t block_cache_size = 32 * 1024 * 1024; // 32MB
+// size_t block_cache_size = 64 * 1024 * 1024; // 64MB
 // size_t block_cache_size = 1024 * 1024 * 1024; // 1GB
 size_t block_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
-
 // size_t blob_cache_size = 0; // 0MB
-// size_t blob_cache_size = 8 * 1024 * 1024; // 32MB
-// size_t blob_cache_size = 1024 * 1024 * 1024; // 1GB
-size_t blob_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
+// size_t blob_cache_size = (size_t)64 * 1024 * 1024; // 64MB
+size_t blob_cache_size = (size_t)1024 * 1024 * 1024; // 1GB
+// size_t blob_cache_size = (size_t)2048  * 1024 * 1024; // 2GB
+// size_t blob_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
 
-size_t range_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
+// size_t range_cache_size = 0; // 0MB
+// size_t range_cache_size = (size_t)64 * 1024 * 1024; // 64MB
+size_t range_cache_size = (size_t)1024 * 1024 * 1024; // 1GB
+// size_t range_cache_size = (size_t)2048 * 1024 * 1024; // 2GB
+// size_t range_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
 
 const int start_key = 100000; // Start key for range
 const int end_key = 999999;   // End key for range
+const int total_len = end_key - start_key + 1;
+const int max_range_query_len = total_len * 0.01; // 1% of total length
+const int min_range_query_len = total_len * 0.01;
+const int num_range_queries = 1000;
 
 std::vector<std::pair<std::string, std::string>> keyValuePairs;
 Status status;
@@ -110,137 +119,19 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
         len = end_key - start_key + 1;
     }
 
-    const Snapshot* snapshot = db->GetSnapshot();
     ReadOptions read_options;
-    read_options.snapshot = snapshot;
-    Iterator* it = db->NewIterator(read_options);
-    SequenceNumber seq_num = snapshot->GetSequenceNumber();
-
-    std::vector<std::string> userkey_str_vec;
-    std::vector<std::string> value_str_vec;
-    ReferringSliceVecRange ref_slice_vec_range(true, seq_num);
-
-    ref_slice_vec_range.reserve(len);
-    userkey_str_vec.reserve(len);
-    value_str_vec.reserve(len);
+    std::vector<std::string> keys;
+    std::vector<std::string> values;
     
-    // Time tracking for ToString operations
-    duration<double> toString_time(0);
-    duration<double> next_time(0); // Time tracking for Next operations
-    duration<double> emplace_time(0); // Time tracking for ref_slice_vec_range.emplace
-
-    int i = 0;
-    if (scan_start_key != "" && !scan_start_key.empty()) {
-        it->Seek(scan_start_key);
-    } else {
-        it->SeekToFirst();
-    }
-
-    if (!it->Valid()) {
-        std::cout << "Warning: Iterator is not valid after seek the first key." << std::endl;
-    }
-
-    int printStrAddrNum = 0;
-    int stringBlockNum = 1;
-    long long diffSum = 0;
-    const char* last_str_addr = nullptr;
-    int lastPrintedPercent = -1;
-    for (; it->Valid();) {
-        // Start timing
-        auto toString_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
-        userkey_str_vec.emplace_back(it->key().ToString());
-        value_str_vec.emplace_back(it->value().ToString());
-
-        // std::string value_str = value.ToString();
-        if (enable_lorc) {
-            auto emplace_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
-            ref_slice_vec_range.emplace(Slice(userkey_str_vec.back()), Slice(value_str_vec.back()));
-            if (enable_timer) {
-                auto emplace_end = high_resolution_clock::now();
-                emplace_time += duration_cast<duration<double>>(emplace_end - emplace_start);
-            }
-        }
-        if (enable_timer) {
-            auto toString_end = high_resolution_clock::now();
-            toString_time += duration_cast<duration<double>>(toString_end - toString_start);
-        }
-
-        // print the first 10 value str address
-        // if (printStrAddrNum-- > 0) {
-        //     std::cout << "key = " << userkey_str_vec.back() << std::endl;
-        //     const char* str_addr = it->value().GetDataAddress();
-        //     const char* scan_value_addr = value.data();
-        //     std::cout << "  iter value str addr: " << (void*)str_addr << std::endl;
-        //     std::cout << "  scan value str addr: " << (void*)scan_value_addr << std::endl;
-        //     if (last_str_addr != nullptr ) {
-        //         // print the diff of the address
-        //         std::ptrdiff_t addr_diff = str_addr - last_str_addr;
-        //         std::cout << "  Diff: " << addr_diff << " bytes" << std::endl;
-        //         diffSum += addr_diff - VALUE_LEN;
-        //         if (addr_diff > 4200) {
-        //             stringBlockNum++;
-        //         }
-        //     }
-        //     last_str_addr = str_addr;
-        // }
-        
-        // print in % (i/len) every 1%
-        // int percent = 100 * ((double)i / len);
-        // if ((percent != lastPrintedPercent) && (percent % 1 == 0)) {
-        //     std::cout << "Progress: " << percent << "%" << std::endl;
-        //     lastPrintedPercent = percent;
-        // }
-        if (++i >= len) {
-            break;
-        }
-
-        // Time tracking for Next operations
-        auto next_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
-        it->Next();
-        if (enable_timer) {
-            auto next_end = high_resolution_clock::now();
-            // Accumulate Next operation time
-            next_time += duration_cast<duration<double>>(next_end - next_start);
-        }
-    }
-
-    // print stringBlockNum and diffSum
-    if (printStrAddrNum > 0) {
-        std::cout << "\tstringBlockNum: " << stringBlockNum << std::endl;
-        std::cout << "\tdiffSum: " << diffSum << " bytes" << std::endl;
-    }
-
-    if (enable_lorc && ref_slice_vec_range.length() != (size_t)len) {
-        std::cout << "\tslice_vec_range.size = " << ref_slice_vec_range.length() << std::endl;
-        assert(false);
-    }
-
-    // lorc put range
-    // set to 0
-    duration<double> putRange_time{0};
-    if (enable_lorc) {
-        auto putRange_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
-        options.range_cache->putRange(std::move(ref_slice_vec_range)); 
-        if (enable_timer) {
-            auto putRange_end = high_resolution_clock::now();
-            putRange_time = duration_cast<duration<double>>(putRange_end - putRange_start);
-        }
-    }
-
-    delete it;
+    Status s = db->Scan(read_options, Slice(scan_start_key), len, &keys, &values);
+    assert(s.ok());
+    assert(keys.size() == values.size());
+    assert(keys.size() == len);
 
     if (enable_timer) {
         auto end = high_resolution_clock::now();
         duration<double> time_span = duration_cast<duration<double>>(end - start);
         cout << "\tScan total time: " << time_span.count() << " seconds" << endl;
-        cout << "\t\tToString(and add to range if needed) total time: " << toString_time.count() << " seconds" << endl;
-        cout << "\t\tNext() of iterator total time: " << next_time.count() << " seconds" << endl;
-        if (enable_lorc) {
-            duration<double> lorc_write_total_time = emplace_time + putRange_time;
-            cout << "\t\tLORC write total time: " << lorc_write_total_time.count() << " seconds" << endl;
-            cout << "\t\t\tSlice emplace total time: " << emplace_time.count() << " seconds" << endl;
-            cout << "\t\t\tLorc putRange time: " << putRange_time.count() << " seconds" << endl;
-        }
     }
 }
 
@@ -261,42 +152,6 @@ void execute_get(DB* db, Options options) {
     }
 }
 
-// for test
-void execute_scan_cold(DB* db, Options options) {
-    std::cout << "\nExecuting cold scan..." << std::endl;
-    execute_scan(db, options);
-}
-
-// void execute_scan_hot(DB* db, Options options) {
-//     std::cout << "\nExecuting hot scan..." << std::endl;
-//     execute_scan(db, options);
-// }
-
-void execute_scan_hot_1(DB* db, Options options) {
-    std::cout << "\nExecuting hot scan 1..." << std::endl;
-    execute_scan(db, options);
-}
-
-void execute_scan_hot_2(DB* db, Options options) {
-    std::cout << "\nExecuting hot scan 2..." << std::endl;
-    execute_scan(db, options);
-}
-
-void execute_scan_hot_3(DB* db, Options options) {
-    std::cout << "\nExecuting hot scan 3..." << std::endl;
-    execute_scan(db, options);
-}
-
-void execute_scan_hot_4(DB* db, Options options) {
-    std::cout << "\nExecuting hot scan 4..." << std::endl;
-    execute_scan(db, options);
-}
-
-void execute_scan_hot_5(DB* db, Options options) {
-    std::cout << "\nExecuting hot scan 5..." << std::endl;
-    execute_scan(db, options);
-}
-
 int main() {
     // Set database path based on blob flag
     string db_path = enable_blob ? "./db/test_db_blobdb" : "./db/test_db_rocksdb";
@@ -311,7 +166,7 @@ int main() {
     if (enable_blob) {
         options.min_blob_size = 512;                
         options.blob_file_size = 64 * 1024 * 1024;  
-        options.enable_blob_garbage_collection = true;
+        options.enable_blob_garbage_collection = false;
         options.blob_garbage_collection_age_cutoff = 0.25;
         if (enable_blob_cache) {
             blob_cache = rocksdb::NewLRUCache(blob_cache_size); 
@@ -327,6 +182,7 @@ int main() {
     }
 
     // Configure block cache
+    block_cache_size = enable_blob ? 64 * 1024 * 1024 : block_cache_size;
     auto block_cache = NewLRUCache(block_cache_size);
     BlockBasedTableOptions table_options;
     table_options.block_cache = block_cache;
@@ -363,12 +219,47 @@ int main() {
 
     // Execute operations based on flags
     if (do_scan) {
-        execute_scan_cold(db, options);
-        execute_scan_hot_1(db, options);
-        execute_scan_hot_2(db, options);
-        execute_scan_hot_3(db, options);
-        execute_scan_hot_4(db, options);
-        execute_scan_hot_5(db, options);
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> range_len_dist(min_range_query_len, max_range_query_len);
+        
+        double total_query_time = 0.0;
+        
+        std::cout << "Executing " << num_range_queries << " random range queries..." << std::endl;
+        std::cout << "Range length between " << min_range_query_len << " and " << max_range_query_len << std::endl;
+        
+        for (int i = 0; i < num_range_queries; i++) {
+            // 随机生成范围长度
+            int query_length = range_len_dist(gen);
+            
+            // 随机生成起始键，确保不会超出有效范围
+            int max_start = end_key - query_length;
+            std::uniform_int_distribution<> start_key_dist(start_key, max_start);
+            int query_start_key = start_key_dist(gen);
+            
+            std::string start_key_str = gen_key(query_start_key);
+            
+            std::cout << "Query " << (i+1) << ": start key = " << query_start_key 
+                      << ", length = " << query_length << std::endl;
+                      
+            // 开始计时
+            auto query_start = high_resolution_clock::now();
+            
+            // 执行范围查询
+            execute_scan(db, options, start_key_str, query_length);
+            
+            // 结束计时
+            auto query_end = high_resolution_clock::now();
+            duration<double> query_time = duration_cast<duration<double>>(query_end - query_start);
+            
+            total_query_time += query_time.count();
+            std::cout << "Query " << (i+1) << " time: " << query_time.count() << 
+                " seconds, avg time = " << total_query_time / (i + 1) << "seconds" <<  std::endl;
+        }
+        
+        // 输出平均查询时间
+        double avg_query_time = total_query_time / num_range_queries;
+        std::cout << "\nAverage query time for " << num_range_queries 
+                  << " random range queries: " << avg_query_time << " seconds\n" << std::endl;
     }
 
     if (do_get) {

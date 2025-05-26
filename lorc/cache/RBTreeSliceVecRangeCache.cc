@@ -149,7 +149,7 @@ void RBTreeSliceVecRangeCache::victim() {
     if (orderedRanges.size() > 1 || this->max_size <= 0) {
         Logger::debug("Victim: " + it->toString());
         this->current_size -= lengthMap.begin()->first;
-        orderedRanges.erase(it);    // TODO(jr): background delete
+        orderedRanges.erase(it);
         lengthMap.erase(lengthMap.begin());
     } else {
         // Truncate the last remaining SliceVecRange

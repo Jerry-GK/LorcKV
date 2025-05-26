@@ -68,7 +68,7 @@
 //     Logger::info("Executing ContRange query: < StartKey = " + start_key + ", len = " + std::to_string(range_len) + ", EndKey = " \
 //         + std::to_string((std::stoi(start_key) + range_len - 1)) + " >");
 //     ContRange cont_range(true);
-//     cont_range.reserve(range_len * key_size, range_len * value_size, range_len); // TODO(jr): estimate the keys size and values size
+//     cont_range.reserve(range_len * key_size, range_len * value_size, range_len);
 
 //     int len = 0;
 //     ContRangeCacheIterator* rc_it = lorc->newContRangeCacheIterator();
