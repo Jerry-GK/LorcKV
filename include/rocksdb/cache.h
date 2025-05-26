@@ -582,6 +582,10 @@ Status UpdateTieredCache(
 // Range Cache (lorc)
 // RBTreeSliceVecRangeCache
 inline std::shared_ptr<LogicallyOrderedSliceVecRangeCache> NewRBTreeSliceVecRangeCache(size_t capacity, bool enable_logger = false) {
+  if (capacity == 0) {
+    // If capacity is 0, we return a null pointer to indicate no cache.
+    return nullptr;
+  }
   return std::make_shared<RBTreeSliceVecRangeCache>(capacity, enable_logger);
 }  
 }// namespace ROCKSDB_NAMESPACE

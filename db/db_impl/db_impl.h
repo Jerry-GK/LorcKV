@@ -268,6 +268,12 @@ class DBImpl : public DB {
   Status GetEntity(const ReadOptions& options, const Slice& key,
                    PinnableAttributeGroups* result) override;
 
+  using DB::Scan;
+  Status Scan(const ReadOptions& options, ColumnFamilyHandle* column_family,
+              const Slice& start_key, const Slice& end_key, size_t len,
+              std::vector<std::string>* keys,
+              std::vector<std::string>* values) override;
+
   using DB::GetMergeOperands;
   Status GetMergeOperands(const ReadOptions& options,
                           ColumnFamilyHandle* column_family, const Slice& key,
@@ -686,15 +692,16 @@ class DBImpl : public DB {
                  ColumnFamilyHandle* column_family, const Slice& key,
                  PinnableSlice* value, std::string* timestamp);
 
-  // Function that Get and KeyMayExist call with no_io true or false
-  // Note: 'value_found' from KeyMayExist propagates here
-  // This function is also called by GetMergeOperands
-  // If get_impl_options.get_value = true get value associated with
-  // get_impl_options.key via get_impl_options.value
-  // If get_impl_options.get_value = false get merge operands associated with
-  // get_impl_options.key via get_impl_options.merge_operands
   virtual Status GetImpl(const ReadOptions& options, const Slice& key,
                          GetImplOptions& get_impl_options);
+
+  Status ScanImpl(const ReadOptions& options,
+                  ColumnFamilyHandle* column_family,
+                  const Slice& start_key,
+                  const Slice& end_key,
+                  size_t len,
+                  std::vector<std::string>* keys,
+                  std::vector<std::string>* values);
 
   // If `snapshot` == kMaxSequenceNumber, set a recent one inside the file.
   ArenaWrappedDBIter* NewIteratorImpl(const ReadOptions& options,

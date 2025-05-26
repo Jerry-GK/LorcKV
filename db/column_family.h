@@ -176,6 +176,7 @@ class ColumnFamilyHandleImpl : public ColumnFamilyHandle {
   const std::string& GetName() const override;
   Status GetDescriptor(ColumnFamilyDescriptor* desc) override;
   const Comparator* GetComparator() const override;
+  std::shared_ptr<LogicallyOrderedSliceVecRangeCache> GetRangeCache() const override;
 
  private:
   ColumnFamilyData* cfd_;
@@ -358,6 +359,10 @@ class ColumnFamilyData {
   // This returns the latest MutableCFOptions, which may be not in effect yet.
   const MutableCFOptions& GetLatestMutableCFOptions() const {
     return mutable_cf_options_;
+  }
+
+  std::shared_ptr<LogicallyOrderedSliceVecRangeCache> GetRangeCache() const {
+    return this->range_cache_;
   }
 
   // REQUIRES: DB mutex held

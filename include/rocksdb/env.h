@@ -456,6 +456,7 @@ class Env : public Customizable {
     kGetEntity = 8,
     kMultiGetEntity = 9,
     kGetFileChecksumsFromCurrentManifest = 10,
+    kScan = 11,
     kUnknown,  // Keep last for easy array of non-unknowns
   };
 

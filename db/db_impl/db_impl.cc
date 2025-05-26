@@ -91,6 +91,7 @@
 #include "rocksdb/version.h"
 #include "rocksdb/write_buffer_manager.h"
 #include "rocksdb/vec_lorc_iter.h"
+#include "rocksdb/ref_vec_range.h"
 #include "table/block_based/block.h"
 #include "table/block_based/block_based_table_factory.h"
 #include "table/get_context.h"
@@ -2265,6 +2266,91 @@ Status DBImpl::GetEntity(const ReadOptions& _read_options, const Slice& key,
     (*result)[i].SetColumns(std::move(columns[i]));
   }
   return s;
+}
+
+Status DBImpl::Scan(const ReadOptions& _read_options,
+                    ColumnFamilyHandle* column_family,
+                    const Slice& start_key,
+                    const Slice& end_key,
+                    size_t len,
+                    std::vector<std::string>* keys,
+                    std::vector<std::string>* values) {
+  assert(keys != nullptr || values != nullptr);
+  if (keys == nullptr) {
+    return Status::InvalidArgument(
+        "Cannot call Scan without a keys vector");
+  }
+  if (values == nullptr) {
+    return Status::InvalidArgument(
+        "Cannot call Scan without a values vector");
+  }
+  if (_read_options.io_activity != Env::IOActivity::kUnknown &&
+      _read_options.io_activity != Env::IOActivity::kScan) {
+    return Status::InvalidArgument(
+        "Can only call Scan with `ReadOptions::io_activity` is "
+        "`Env::IOActivity::kUnknown` or `Env::IOActivity::kScan`");
+  }
+
+  ReadOptions read_options(_read_options);
+  if (read_options.io_activity == Env::IOActivity::kUnknown) {
+    read_options.io_activity = Env::IOActivity::kScan;
+  }
+
+  Status s = ScanImpl(_read_options, column_family, start_key, end_key, len, keys, values);
+  return s;
+}
+
+Status DBImpl::ScanImpl(const ReadOptions& _read_options,
+                        ColumnFamilyHandle* column_family,
+                        const Slice& start_key,
+                        const Slice& end_key,
+                        size_t len,
+                        std::vector<std::string>* keys,
+                        std::vector<std::string>* values) {
+  // TODO(jr): use scan_impl_options as parameter 
+
+  // using range cache if needed
+  auto lorc = column_family->GetRangeCache();
+  const Snapshot* snapshot = _read_options.snapshot ? _read_options.snapshot : this->GetSnapshot();
+  ReferringSliceVecRange ref_slice_vec_range(true, snapshot->GetSequenceNumber());
+
+  Iterator* it = this->NewIterator(_read_options, column_family);
+  if (start_key.empty()) {
+    it->SeekToFirst();
+  } else {
+    it->Seek(start_key);
+  }
+
+  if (len != 0) {
+    keys->reserve(len);
+    values->reserve(len);
+    if (lorc) {
+      ref_slice_vec_range.reserve(len);
+    }
+  }
+
+  size_t count = 0;
+  for (; it->Valid(); it->Next()) {
+    keys->emplace_back(it->key().ToString());
+    values->emplace_back(it->value().ToString());
+    if (lorc) {
+      ref_slice_vec_range.emplace(Slice(keys->back()), Slice(values->back()));
+    }
+
+    count++;
+    if (len !=0 && count >= len) {
+      break;  // terminate by len
+    }
+    if (!end_key.empty() && it->key() >= end_key) {
+      break;  // terminare by end_key
+    }
+  }
+
+  if (lorc) {
+    // try to put non-hit ranges to range cache
+    lorc->putRange(std::move(ref_slice_vec_range));
+  }
+  return Status();
 }
 
 bool DBImpl::ShouldReferenceSuperVersion(const MergeContext& merge_context) {

@@ -756,6 +756,8 @@ std::string Env::IOActivityToString(IOActivity activity) {
       return "MultiGetEntity";
     case Env::IOActivity::kGetFileChecksumsFromCurrentManifest:
       return "GetFileChecksumsFromCurrentManifest";
+    case Env::IOActivity::kScan:
+      return "Scan";
     case Env::IOActivity::kUnknown:
       return "Unknown";
   };

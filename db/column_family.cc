@@ -96,6 +96,10 @@ const Comparator* ColumnFamilyHandleImpl::GetComparator() const {
   return cfd()->user_comparator();
 }
 
+std::shared_ptr<LogicallyOrderedSliceVecRangeCache> ColumnFamilyHandleImpl::GetRangeCache() const {
+  return cfd()->GetRangeCache();
+}
+
 void GetInternalTblPropCollFactory(
     const ImmutableCFOptions& ioptions,
     InternalTblPropCollFactories* internal_tbl_prop_coll_factories) {
