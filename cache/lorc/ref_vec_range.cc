@@ -6,7 +6,6 @@
 #include <queue>
 #include <functional>
 #include <atomic>
-#include <iostream>
 #include "rocksdb/ref_vec_range.h"
 #include "db/dbformat.h"
 
@@ -180,7 +179,7 @@ void ReferringSliceVecRange::emplace(const Slice& key, const Slice& value) {
 SliceVecRange ReferringSliceVecRange::dumpSubRange(const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded) const {
     assert(valid && range_length > 0 && this->startKey() <= startKey && startKey <= endKey && endKey <= this->endKey());
     
-    // 找到起始位置
+    // find the start position of the subrange
     int start_pos = find(startKey);
     if (start_pos < 0 || (size_t)start_pos >= range_length) {
         assert(false);

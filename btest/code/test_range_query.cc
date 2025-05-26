@@ -102,7 +102,7 @@ int main() {
     if (enable_blob) {
         options.min_blob_size = 512;                
         options.blob_file_size = 64 * 1024 * 1024;  
-        options.enable_blob_garbage_collection = false;
+        options.enable_blob_garbage_collection = true;
         options.blob_garbage_collection_age_cutoff = 0.25;
         if (enable_blob_cache) {
             blob_cache = rocksdb::NewLRUCache(blob_cache_size); 

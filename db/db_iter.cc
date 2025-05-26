@@ -9,7 +9,6 @@
 
 #include "db/db_iter.h"
 
-#include <iostream>
 #include <limits>
 #include <string>
 
