@@ -240,6 +240,11 @@ Slice SliceVecRange::internalKeyAt(size_t index) const {
     return Slice(data->internal_keys[index]);
 }
 
+Slice SliceVecRange::userKeyAt(size_t index) const {
+    assert(valid && range_length > index && data->internal_keys[index].size() > internal_key_extra_bytes);
+    return Slice(data->internal_keys[index].data(), data->internal_keys[index].size() - internal_key_extra_bytes);
+}
+
 Slice SliceVecRange::valueAt(size_t index) const {
     assert(valid && range_length > index);
     return Slice(data->values[index]);
@@ -265,10 +270,10 @@ void SliceVecRange::setTimestamp(int timestamp_) const {
     this->timestamp = timestamp_;
 }
 
-bool SliceVecRange::update(const Slice& key, const Slice& value) const {
+bool SliceVecRange::update(const Slice& internal_key, const Slice& value) const {
     assert(valid && range_length > 0);    
-    int index = find(key);
-    if (index >= 0 && internalKeyAt(index) == key) {
+    int index = find(internal_key);
+    if (index >= 0 && internalKeyAt(index) == internal_key) {
         data->values[index] = value.ToString();
         return true;
     }
@@ -291,8 +296,12 @@ void SliceVecRange::truncate(int targetLength) const {
     }
 }
 
-int SliceVecRange::find(const Slice& key) const {
-    assert(valid && range_length > 0);
+int SliceVecRange::find(const Slice& internal_key) const {
+    assert(valid && range_length > 0 && internal_key.size() > internal_key_extra_bytes);
+
+    // covert internal_key to user key for comparison
+    Slice key = Slice(internal_key.data(), internal_key.size() - internal_key_extra_bytes);
+
     if (!valid || range_length == 0) {
         return -1;
     }
@@ -302,7 +311,7 @@ int SliceVecRange::find(const Slice& key) const {
     
     while (left <= right) {
         int mid = left + (right - left) / 2;
-        Slice mid_key = internalKeyAt(mid);
+        Slice mid_key = userKeyAt(mid); // use user key for inner comparison
         if (mid_key == key) {
             return mid;
         } else if (mid_key < key) {
@@ -319,7 +328,12 @@ int SliceVecRange::find(const Slice& key) const {
 }
 
 std::string SliceVecRange::toString() const {
-    std::string str = "< " + ToStringPlain(this->startUserKey().ToString()) + " -> " + ToStringPlain(this->endUserKey().ToString()) + " >";
+    std::string str = "< " + ToStringPlain(this->startUserKey().ToString()) + " -> " + ToStringPlain(this->endUserKey().ToString()) + " >"
+        + " ( len = " + std::to_string(this->length()) + " )";
+    if ((int)this->length() != std::stoi(ToStringPlain(this->endUserKey().ToString())) - std::stoi(ToStringPlain(this->startUserKey().ToString())) + 1) {
+        str += " (warning: length mismatch)";
+        assert(false);
+    }
     return str;
 }
 
@@ -333,11 +347,11 @@ SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& range
     }
     
     // 找到最长的 SliceVecRange
-    size_t max_length_index = 0;
+    int max_length_index = 0;
     size_t max_length = 0;
     size_t total_length = 0;
     
-    for (size_t i = 0; i < ranges.size(); i++) {
+    for (int i = 0; i < (int)ranges.size(); i++) {
         size_t current_length = ranges[i].length();
         total_length += current_length;
         if (current_length > max_length) {
@@ -351,24 +365,22 @@ SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& range
     base_data->internal_keys.reserve(total_length);
     base_data->values.reserve(total_length);
 
-    for (size_t i = 0; i < ranges.size(); i++) {
-        if (i < max_length_index) {
-            base_data->internal_keys.insert(base_data->internal_keys.begin(),
-                std::make_move_iterator(ranges[i].data->internal_keys.begin()),
-                std::make_move_iterator(ranges[i].data->internal_keys.end()));
-            base_data->values.insert(base_data->values.begin(),
-                std::make_move_iterator(ranges[i].data->values.begin()),
-                std::make_move_iterator(ranges[i].data->values.end()));
-        } else if (i == max_length_index) {
-            continue;
-        } else if (i > max_length_index) {
-            base_data->internal_keys.insert(base_data->internal_keys.end(),
-                std::make_move_iterator(ranges[i].data->internal_keys.begin()),
-                std::make_move_iterator(ranges[i].data->internal_keys.end()));
-            base_data->values.insert(base_data->values.end(),
-                std::make_move_iterator(ranges[i].data->values.begin()),
-                std::make_move_iterator(ranges[i].data->values.end()));
-        }
+    for (int i = max_length_index -1; i >= 0; i--) {
+        base_data->internal_keys.insert(base_data->internal_keys.begin(),
+            std::make_move_iterator(ranges[i].data->internal_keys.begin()),
+            std::make_move_iterator(ranges[i].data->internal_keys.end()));
+        base_data->values.insert(base_data->values.begin(),
+            std::make_move_iterator(ranges[i].data->values.begin()),
+            std::make_move_iterator(ranges[i].data->values.end()));
+    }
+
+    for (int i = max_length_index + 1; i < (int)ranges.size(); i++) {
+        base_data->internal_keys.insert(base_data->internal_keys.end(),
+            std::make_move_iterator(ranges[i].data->internal_keys.begin()),
+            std::make_move_iterator(ranges[i].data->internal_keys.end()));
+        base_data->values.insert(base_data->values.end(),
+            std::make_move_iterator(ranges[i].data->values.begin()),
+            std::make_move_iterator(ranges[i].data->values.end()));
     }
     
     return SliceVecRange(base_data, total_length);

@@ -56,6 +56,7 @@ public:
     Slice endInternalKey() const;
 
     Slice internalKeyAt(size_t index) const;
+    Slice userKeyAt(size_t index) const;
     Slice valueAt(size_t index) const;
 
     size_t length() const;
@@ -64,13 +65,13 @@ public:
     int getTimestamp() const;
     void setTimestamp(int timestamp) const;
 
-    bool update(const Slice& key, const Slice& value) const;
+    bool update(const Slice& internal_key, const Slice& value) const;
 
     // truncate in place
     void truncate(int length) const;
 
     // return the first element index whose key is < greater than or equal > to key
-    int find(const Slice& key) const;
+    int find(const Slice& internal_key) const;
 
     std::string toString() const;
 

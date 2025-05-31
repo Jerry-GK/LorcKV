@@ -69,6 +69,7 @@ void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
             }
         }
         this->current_size -= it->byteSize();
+        this->total_range_length -= it->length();
         
         // Move the old SliceVecRange in range cache to mergedRanges, and remove it (later merged as one large range into the range cache)
         // Using extract() without data copy
@@ -97,11 +98,13 @@ void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
         SliceVecRange mergedRange = SliceVecRange::concatRangesMoved(mergedRanges);
         lengthMap.emplace(mergedRange.length(), mergedRange.startUserKey().ToString());
         this->current_size += mergedRange.byteSize();
+        this->total_range_length += mergedRange.length();
         orderedRanges.emplace(std::move(mergedRange));
     } else {
         for (auto& mergedRange : mergedRanges) {
             lengthMap.emplace(mergedRange.length(), mergedRange.startUserKey().ToString());
             this->current_size += mergedRange.byteSize();
+            this->total_range_length += mergedRange.length();
             orderedRanges.emplace(std::move(mergedRange));
         }
     }
@@ -114,10 +117,8 @@ void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
     // Debug output: print all ranges in order
     logger.debug("----------------------------------------");
     logger.debug("All ranges after putRange: " + newRangeStr);
-    for (auto itt = orderedRanges.begin(); itt != orderedRanges.end(); ++itt) {
-        logger.debug("SliceVecRange: " + itt->toString());
-    }
     logger.debug("Total SliceVecRange size: " + std::to_string(this->current_size));
+    logger.debug("Total SliceVecRange length: " + std::to_string(this->total_range_length));
     logger.debug("Total SliceVecRange num: " + std::to_string(this->orderedRanges.size()));
     logger.debug("----------------------------------------");
 
@@ -163,6 +164,7 @@ void RBTreeSliceVecRangeCache::victim() {
         logger.debug("Victim: " + it->toString());
         orderedRanges.erase(it);
         this->current_size -= it->byteSize();
+        this->total_range_length -= it->length();
         lengthMap.erase(lengthMap.begin());
     } else {
         // Truncate the last remaining SliceVecRange
@@ -171,6 +173,7 @@ void RBTreeSliceVecRangeCache::victim() {
         it->truncate(this->capacity);
         lengthMap.emplace(it->length(), it->startUserKey().ToString());
         this->current_size = it->byteSize();
+        this->total_range_length = it->length();
     }
 }
 

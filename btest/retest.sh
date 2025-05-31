@@ -63,7 +63,7 @@ if [ "$mode" == "profile" ]; then
     profile_filename=${filename}${postfix:+_$postfix}
 
     # Use perf for performance sampling (requires root privileges or perf permissions)
-    perf record -F 99 --call-graph dwarf -g -o ./profile/data/${profile_filename}.data ./bin/${filename}
+    perf record -F 99 --call-graph dwarf -g --delay 20000 -o ./profile/data/${profile_filename}.data ./bin/${filename}
 
     # Generate flame graph (FlameGraph tool needs to be installed)
     perf script -i ./profile/data/${profile_filename}.data | \

@@ -2313,6 +2313,7 @@ Status DBImpl::ScanImpl(const ReadOptions& _read_options,
   auto lorc = column_family->GetRangeCache();
   const Snapshot* snapshot = _read_options.snapshot ? _read_options.snapshot : this->GetSnapshot();
   ReferringSliceVecRange ref_slice_vec_range(true, snapshot->GetSequenceNumber());
+  // ReferringSliceVecRange ref_slice_vec_range(true, kMaxSequenceNumber);
 
   Iterator* it = this->NewIterator(_read_options, column_family);
   if (start_key.empty()) {

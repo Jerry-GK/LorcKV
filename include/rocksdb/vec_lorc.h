@@ -185,6 +185,7 @@ protected:
 
     size_t capacity;
     size_t current_size;
+    size_t total_range_length;
 
     bool enable_statistic; // initialize to false
     CacheStatistic cache_statistic;

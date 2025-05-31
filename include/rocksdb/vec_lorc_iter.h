@@ -19,8 +19,8 @@ public:
     virtual bool Valid() const override = 0;
     virtual void SeekToFirst() override = 0;
     virtual void SeekToLast() override = 0;
-    virtual void Seek(const Slice& target) override = 0;
-    virtual void SeekForPrev(const Slice& target) override = 0;
+    virtual void Seek(const Slice& target_internal_key) override = 0;
+    virtual void SeekForPrev(const Slice& target_internal_key) override = 0;
     virtual void Next() override = 0;
     virtual void Prev() override = 0;
     virtual Slice key() const override = 0;

@@ -2,6 +2,7 @@
 #include <string>
 #include <chrono>
 #include <random>
+#include <fstream>  // 添加文件操作头文件
 #include "rocksdb/db.h"
 #include "rocksdb/options.h"
 #include "rocksdb/iterator.h"
@@ -9,6 +10,12 @@
 #include "rocksdb/vec_lorc.h"
 #include "rocksdb/vec_range.h"
 #include "rocksdb/ref_vec_range.h"
+#include <sys/ioctl.h>
+#include <linux/perf_event.h>
+#include <sys/syscall.h>
+#include <asm/unistd.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 using namespace std;
 using namespace rocksdb;
@@ -17,11 +24,13 @@ using namespace chrono;
 #define KEY_LEN 24
 #define VALUE_LEN 4096
 
+bool direct_io = true; // Use direct IO for reads and writes
+bool enable_blob = true; // Use blobDB. If false, use regular RocksDB of BlockBasedTable
+
 bool do_scan = true;
 bool do_update = true;
 
-bool enable_blob = false;
-bool enable_blob_cache = true;
+bool enable_blob_cache = false;
 bool enable_lorc = true;
 bool enable_timer = true;
 
@@ -30,16 +39,20 @@ const int end_key = 999999;   // End key for range
 const int total_len = end_key - start_key + 1;
 const int max_range_query_len = total_len * 0.01; // 1% of total length
 const int min_range_query_len = total_len * 0.01;
-const int num_range_queries = 1000;
+const int num_range_queries = 2000;
 
+double warm_up_ratio = 0.5;
 double p_update = 0.2;  // 20% update before each scan
 int num_update = 1000;   // num of entries to update of each update
 
+double hot_data_precentage = 0.05; // hot data only range with start key >= (end_key - total_len * hot_data_precentage) will be queried
+bool only_update_hot_data = true; // only update hot data, i.e., range with start key >= (end_key - total_len * hot_data_precentage)
+
 // block cache size will always be set to 64MB later if enable_blob is true
 // size_t block_cache_size = 0; // 0MB
-// size_t block_cache_size = 64 * 1024 * 1024; // 64MB
+size_t block_cache_size = 64 * 1024 * 1024; // 64MB
 // size_t block_cache_size = 1024 * 1024 * 1024; // 1GB
-size_t block_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
+// size_t block_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
 
 // size_t blob_cache_size = 0; // 0MB
 // size_t blob_cache_size = (size_t)64 * 1024 * 1024; // 64MB
@@ -55,6 +68,14 @@ size_t range_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
 
 std::vector<std::pair<std::string, std::string>> keyValuePairs;
 Status status;
+
+static void perf_event_start() {
+    syscall(__NR_perf_event_open, PERF_TYPE_SOFTWARE, PERF_COUNT_SW_DUMMY, 0, -1, 0);
+}
+
+static void perf_event_stop() {
+    syscall(__NR_perf_event_open, PERF_TYPE_SOFTWARE, PERF_COUNT_SW_DUMMY, 1, -1, 0);
+}
 
 std::string generateRandomString(int len) {
     std::mt19937 gen(std::random_device{}());
@@ -116,7 +137,6 @@ void execute_insert(DB* db, Options options) {
 }
 
 void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int len = -1) {
-    auto start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
     if (len == -1) {
         len = end_key - start_key + 1;
     }
@@ -129,12 +149,6 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
     assert(s.ok());
     assert(keys.size() == values.size());
     assert(keys.size() == len);
-
-    if (enable_timer) {
-        auto end = high_resolution_clock::now();
-        duration<double> time_span = duration_cast<duration<double>>(end - start);
-        cout << "\tScan total time: " << time_span.count() << " seconds" << endl;
-    }
 }
 
 void execute_random_update(DB* db, Options options, int num_updates) {
@@ -142,10 +156,15 @@ void execute_random_update(DB* db, Options options, int num_updates) {
     
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<> key_dist(start_key, end_key);
+    int query_key_left_bound = start_key;
+    if (only_update_hot_data) {
+        query_key_left_bound = hot_data_precentage > 0.99 ? start_key : end_key - total_len * hot_data_precentage;
+    }
+
+    std::uniform_int_distribution<> start_key_dist(query_key_left_bound, end_key);
     
     for (int i = 0; i < num_updates; i++) {
-        int random_key = key_dist(gen);
+        int random_key = start_key_dist(gen);
         std::string key = gen_key(random_key);
         std::string value = gen_value(random_key);
         
@@ -166,7 +185,32 @@ void execute_random_update(DB* db, Options options, int num_updates) {
     }
 }
 
+void warmUpEnd() {
+    std::cout << "Warmup phase completed. Now proceeding to main phase." << std::endl;
+}
+
 int main() {
+    // 定义CSV文件路径
+    string csv_path = "./csv/scan_performance";
+    if (enable_blob_cache) {
+        csv_path += "_blobcache";
+    }
+    if (enable_lorc) {
+        csv_path += "_lorc";
+    }
+    if (do_update) {
+        csv_path += "_update";
+    } else {
+        csv_path += "_noupdate";
+    }
+    if (direct_io) {
+        csv_path += "_dio";
+    } else {
+        csv_path += "_nodio";
+    }
+    csv_path += ".csv";
+    ofstream csv_file;
+
     // Set database path based on blob flag
     string db_path = enable_blob ? "./db/test_db_blobdb" : "./db/test_db_rocksdb";
 
@@ -174,8 +218,11 @@ int main() {
     Options options;
     options.create_if_missing = false;
     // Direct IO
-    options.use_direct_reads = true;      
-    options.use_direct_io_for_flush_and_compaction = true;
+    options.use_direct_reads = direct_io;      
+    options.use_direct_io_for_flush_and_compaction = false; // always use System Page Cache for writes
+
+    // disable compaction or not
+    options.disable_auto_compactions = false;
 
     // Configure blob settings if enabled
     options.enable_blob_files = enable_blob;
@@ -183,7 +230,7 @@ int main() {
     if (enable_blob) {
         options.min_blob_size = 512;                
         options.blob_file_size = 64 * 1024 * 1024;  
-        options.enable_blob_garbage_collection = true;
+        options.enable_blob_garbage_collection = false;
         options.blob_garbage_collection_age_cutoff = 0.25;
         if (enable_blob_cache) {
             blob_cache = rocksdb::NewLRUCache(blob_cache_size); 
@@ -194,7 +241,7 @@ int main() {
     // Configure LORC if enabled
     std::shared_ptr<LogicallyOrderedSliceVecRangeCache> lorc = nullptr;
     if (enable_lorc) {
-        lorc = rocksdb::NewRBTreeSliceVecRangeCache(range_cache_size);
+        lorc = rocksdb::NewRBTreeSliceVecRangeCache(range_cache_size, false);
         options.range_cache = lorc;
     }
 
@@ -221,6 +268,20 @@ int main() {
     
     // Execute operations based on flags
     if (do_scan) {
+        // 检查文件是否存在，如果存在则删除
+        std::ifstream file_check(csv_path);
+        if (file_check.good()) {
+            file_check.close();
+            std::remove(csv_path.c_str());
+        }
+        csv_file.open(csv_path);
+        if (csv_file.is_open()) {
+            csv_file << "Query,ScanTime(s)" << std::endl;
+        } else {
+            std::cerr << "Failed to open CSV file: " << csv_path << std::endl;
+            assert(false);
+        }
+
         std::mt19937 gen(rd());
         std::uniform_int_distribution<> range_len_dist(min_range_query_len, max_range_query_len);
         std::uniform_real_distribution<> update_prob(0.0, 1.0);
@@ -233,25 +294,40 @@ int main() {
         std::cout << "Executing " << num_range_queries << " random range queries..." << std::endl;
         std::cout << "Range length between " << min_range_query_len << " and " << max_range_query_len << std::endl;
         
-        int warmup_queries = static_cast<int>(num_range_queries * 0.2);
+        int warmup_queries = static_cast<int>(num_range_queries * warm_up_ratio);
+        bool is_warmup_phase = true;
 
         for (int i = 0; i < num_range_queries; i++) {
             // 随机生成范围长度
             int query_length = range_len_dist(gen);
             
             // 随机生成起始键，确保不会超出有效范围
-            int max_start = end_key - query_length;
-            std::uniform_int_distribution<> start_key_dist(start_key, max_start);
+            int max_start = end_key - query_length + 1;
+            const int query_key_left_bound = hot_data_precentage > 0.99 ? start_key : end_key - total_len * hot_data_precentage;
+            assert(query_key_left_bound >= start_key && query_key_left_bound <= max_start);
+            // 确保起始键在有效范围内
+            std::uniform_int_distribution<> start_key_dist(query_key_left_bound, max_start);
             int query_start_key = start_key_dist(gen);
+
+            // preheat
+            if (i == 0) {
+                query_start_key = query_key_left_bound; // preheat the left bound
+            }
+            if (i == 1) {
+                query_start_key = max_start; // preheat the right bound
+            }
             
             std::string start_key_str = gen_key(query_start_key);
             
             // 计算预热阶段查询数量
-            bool is_warmup = (i < warmup_queries);
+            if (is_warmup_phase && i >= warmup_queries) {
+                is_warmup_phase = false;
+                warmUpEnd();
+            }
             
-            std::cout << "Query " << (i+1) << ": start key = " << query_start_key 
-                      << ", length = " << query_length;
-            if (is_warmup) {
+            std::cout << "\nQuery " << (i+1) << ": start key = " << query_start_key 
+                      << ", length = " << query_length << ", end key = " << (query_start_key + query_length - 1);
+            if (is_warmup_phase) {
                 std::cout << " (WARMUP)";
             }
             std::cout << std::endl;
@@ -281,16 +357,26 @@ int main() {
             duration<double> query_time = duration_cast<duration<double>>(query_end - query_start);
             
             // 只统计非预热阶段的查询时间
-            if (!is_warmup) {
+            if (!is_warmup_phase) {
                 total_query_time += query_time.count();
             }
             
-            if (!is_warmup) {
+            cout << "\tScan total time: " << query_time.count() << " seconds" << endl;
+            if (!is_warmup_phase) {
                 std::cout << "\tAvg scan time = " << total_query_time / (i + 1 - warmup_queries) << " seconds";
+                // 将查询次数和当前扫描时间写入CSV文件
+                if (csv_file.is_open()) {
+                    csv_file << (i + 1 - warmup_queries) << "," << query_time.count() << std::endl;
+                }
             } else {
                 std::cout << "\tWarm up, not counted in statistics";
             }
             std::cout << std::endl;
+        }
+        
+        // 关闭CSV文件
+        if (csv_file.is_open()) {
+            csv_file.close();
         }
                   
         // 输出更新统计信息

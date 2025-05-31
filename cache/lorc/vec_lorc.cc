@@ -3,7 +3,7 @@
 namespace ROCKSDB_NAMESPACE {
 
 LogicallyOrderedSliceVecRangeCache::LogicallyOrderedSliceVecRangeCache(size_t capacity_, bool enable_logger_)
-    : capacity(capacity_), current_size(0), enable_statistic(false), cache_statistic(CacheStatistic()), logger(LorcLogger(LorcLogger::Level::DEBUG, enable_logger_)), 
+    : capacity(capacity_), current_size(0), total_range_length(0), enable_statistic(false), cache_statistic(CacheStatistic()), logger(LorcLogger(LorcLogger::Level::DEBUG, enable_logger_)), 
     full_hit_count(0), full_query_count(0), hit_size(0), query_size(0) {
 }
 

@@ -50,19 +50,19 @@ void RBTreeSliceVecRangeCacheIterator::SeekToLast() {
     valid = true;
 }
 
-void RBTreeSliceVecRangeCacheIterator::Seek(const Slice& target) {
+void RBTreeSliceVecRangeCacheIterator::Seek(const Slice& target_internal_key) {
     if (!cache) {
         valid = false;
         return;
     }
-    SliceVecRange temp_range(target);
+    SliceVecRange temp_range(target_internal_key);
     current_range = cache->orderedRanges.upper_bound(temp_range); // startKey > target
     if (current_range != cache->orderedRanges.begin()) {
         --current_range;
     }
     
     if (current_range != cache->orderedRanges.end()) {
-        current_index = current_range->find(target);
+        current_index = current_range->find(target_internal_key);
         if (current_index == -1) {
             ++current_range;
             current_index = 0;
@@ -77,19 +77,19 @@ void RBTreeSliceVecRangeCacheIterator::Seek(const Slice& target) {
     }
 }
 
-void RBTreeSliceVecRangeCacheIterator::SeekForPrev(const Slice& target) {
+void RBTreeSliceVecRangeCacheIterator::SeekForPrev(const Slice& target_internal_key) {
     if (!cache) {
         valid = false;
         return;
     }
-    SliceVecRange temp_range(target);
+    SliceVecRange temp_range(target_internal_key);
     current_range = cache->orderedRanges.upper_bound(temp_range);
     if (current_range != cache->orderedRanges.begin()) {
         --current_range;
     }
     
-    if (current_range != cache->orderedRanges.end() && current_range->endInternalKey() >= target) {
-        current_index = current_range->find(target);
+    if (current_range != cache->orderedRanges.end() && current_range->endInternalKey() >= target_internal_key) {
+        current_index = current_range->find(target_internal_key);
         if (current_index == -1) {
             current_index = current_range->length() - 1;
         }

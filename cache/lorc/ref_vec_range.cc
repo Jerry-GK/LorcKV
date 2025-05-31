@@ -178,7 +178,7 @@ void ReferringSliceVecRange::emplace(const Slice& key, const Slice& value) {
 
 SliceVecRange ReferringSliceVecRange::dumpSubRange(const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded) const {
     assert(valid && range_length > 0 && this->startKey() <= startKey && startKey <= endKey && endKey <= this->endKey());
-    
+
     // find the start position of the subrange
     int start_pos = find(startKey);
     if (start_pos < 0 || (size_t)start_pos >= range_length) {
@@ -205,7 +205,7 @@ SliceVecRange ReferringSliceVecRange::dumpSubRange(const Slice& startKey, const 
     }
     
     if (start_pos > end_pos || (size_t)start_pos >= range_length || end_pos < 0) {
-        assert(false);
+        // cant find entries in the range
         return SliceVecRange(false);
     }
     
