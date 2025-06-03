@@ -2,7 +2,7 @@
 #include <string>
 #include <chrono>
 #include <random>
-#include <fstream>  // 添加文件操作头文件
+#include <fstream>
 #include "rocksdb/db.h"
 #include "rocksdb/options.h"
 #include "rocksdb/iterator.h"
@@ -41,16 +41,17 @@ const int max_range_query_len = total_len * 0.01; // 1% of total length
 const int min_range_query_len = total_len * 0.01;
 const int num_range_queries = 2000;
 
-double warm_up_ratio = 0.5;
-double p_update = 0.2;  // 20% update before each scan
+double warm_up_ratio = 200.0 / num_range_queries;
+double p_update = 0.5;  // 20% update before each scan
 int num_update = 1000;   // num of entries to update of each update
 
 double hot_data_precentage = 0.05; // hot data only range with start key >= (end_key - total_len * hot_data_precentage) will be queried
-bool only_update_hot_data = true; // only update hot data, i.e., range with start key >= (end_key - total_len * hot_data_precentage)
+bool only_update_hot_data = false; // only update hot data, i.e., range with start key >= (end_key - total_len * hot_data_precentage)
 
 // block cache size will always be set to 64MB later if enable_blob is true
 // size_t block_cache_size = 0; // 0MB
-size_t block_cache_size = 64 * 1024 * 1024; // 64MB
+// size_t block_cache_size = 64 * 1024 * 1024; // 64MB
+size_t block_cache_size = 128 * 1024 * 1024; // 128MB
 // size_t block_cache_size = 1024 * 1024 * 1024; // 1GB
 // size_t block_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
 
@@ -147,6 +148,7 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
     
     Status s = db->Scan(read_options, Slice(scan_start_key), len, &keys, &values);
     assert(s.ok());
+    std::cout << "Scan completed. Number of keys scanned: " << keys.size() << std::endl;
     assert(keys.size() == values.size());
     assert(keys.size() == len);
 }
@@ -396,6 +398,8 @@ int main() {
 
         std::cout << std::endl;
     }
+    
+    // lorc->printAllRanges(); // Print all ranges in the LORC cache
 
     // Clean up
     delete db;

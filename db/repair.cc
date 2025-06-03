@@ -487,7 +487,7 @@ class Repairer {
       SeqnoToTimeMapping empty_seqno_to_time_mapping;
       status = BuildTable(
           dbname_, /* versions */ nullptr, immutable_db_options_, tboptions,
-          file_options_, table_cache_.get(), iter.get(),
+          file_options_, table_cache_.get(), nullptr /* no range cache in log dump */, iter.get(),
           std::move(range_del_iters), &meta, nullptr /* blob_file_additions */,
           {}, kMaxSequenceNumber, kMaxSequenceNumber, kMaxSequenceNumber,
           snapshot_checker, false /* paranoid_file_checks*/,

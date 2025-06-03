@@ -72,9 +72,10 @@ enum ValueType : unsigned char {
   kTypeColumnFamilyWideColumnEntity = 0x17,     // WAL only
   kTypeValuePreferredSeqno = 0x18,              // Value with a unix write time
   kTypeColumnFamilyValuePreferredSeqno = 0x19,  // WAL only
+  kTypeRangeCacheValue = 0x1A,  // Range cache value, only used for in-memory range cache
   kTypeMaxValid,    // Should be after the last valid type, only used for
                     // validation
-  kMaxValue = 0x7F  // Not used for storing records.
+  kMaxValue = 0x7F,  // Not used for storing records.
 };
 
 // Defined in dbformat.cc
@@ -113,7 +114,7 @@ struct UserKeyRangeOpt {
 inline bool IsValueType(ValueType t) {
   return t <= kTypeMerge || kTypeSingleDeletion == t || kTypeBlobIndex == t ||
          kTypeDeletionWithTimestamp == t || kTypeWideColumnEntity == t ||
-         kTypeValuePreferredSeqno == t;
+         kTypeValuePreferredSeqno == t || kTypeRangeCacheValue == t;
 }
 
 // Checks whether a type is from user operation

@@ -60,6 +60,7 @@ Status BuildTable(
     const std::string& dbname, VersionSet* versions,
     const ImmutableDBOptions& db_options, const TableBuilderOptions& tboptions,
     const FileOptions& file_options, TableCache* table_cache,
+    const std::shared_ptr<LogicallyOrderedSliceVecRangeCache> range_cache,
     InternalIterator* iter,
     std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>
         range_del_iters,
@@ -214,9 +215,26 @@ Status BuildTable(
     std::string key_after_flush_buf;
     std::string value_buf;
     c_iter.SeekToFirst();
+    std::string last_user_key;
     for (; c_iter.Valid(); c_iter.Next()) {
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
+
+      if (range_cache) {
+        ParsedInternalKey parsed_ikey;
+        Status ss = ParseInternalKey(key, &parsed_ikey, false);
+        if (!ss.ok()) {
+          break;
+        }
+        Slice user_key = parsed_ikey.user_key;
+        if (user_key.ToString() != last_user_key || last_user_key.empty()) {
+          // update range cache with internal key and actual value before memtables flushed to L0
+          // only update the first user key since it has the largest sequence number
+          range_cache->updateEntry(key, c_iter.actual_value());
+          last_user_key = user_key.ToString();
+        }
+      }
+      
       ParsedInternalKey ikey = c_iter.ikey();
       key_after_flush_buf.assign(key.data(), key.size());
       Slice key_after_flush = key_after_flush_buf;

@@ -6,6 +6,7 @@
 #include <queue>
 #include <functional>
 #include <atomic>
+#include "db/dbformat.h"
 #include "rocksdb/vec_range.h"
 
 namespace ROCKSDB_NAMESPACE {
@@ -271,9 +272,30 @@ void SliceVecRange::setTimestamp(int timestamp_) const {
 }
 
 bool SliceVecRange::update(const Slice& internal_key, const Slice& value) const {
-    assert(valid && range_length > 0);    
+    assert(valid && range_length > 0 && internal_key.size() > internal_key_extra_bytes);    
     int index = find(internal_key);
-    if (index >= 0 && internalKeyAt(index) == internal_key) {
+    Slice user_key = Slice(internal_key.data(), internal_key.size() - SliceVecRange::internal_key_extra_bytes);
+    // dont use internal_key for comparison (the last bit may be kTypeValue in Range Cache and kTypeBlobIndex in LSM)
+    if (index >= 0 && userKeyAt(index) == user_key) {
+        // update the sequence number of the internal key, the type is turned to kTypeRangeCacheValue
+        ParsedInternalKey parsed_internal_key;
+        Status s = ParseInternalKey(internal_key, &parsed_internal_key, false);
+        SequenceNumber seq_num = parsed_internal_key.sequence;
+        if (!s.ok()) {
+            return false;
+        }
+        std::string new_internal_key_str = InternalKey(user_key, seq_num, kTypeRangeCacheValue).Encode().ToString();
+
+        ParsedInternalKey old_parsed_internal_key;
+        s = ParseInternalKey(Slice(data->internal_keys[index]), &old_parsed_internal_key, false);
+        if (!s.ok()) {
+            return false;
+        }
+        SequenceNumber old_seq_num = old_parsed_internal_key.sequence;
+
+        data->internal_keys[index] = new_internal_key_str;
+        
+        // update the value
         data->values[index] = value.ToString();
         return true;
     }
@@ -300,7 +322,7 @@ int SliceVecRange::find(const Slice& internal_key) const {
     assert(valid && range_length > 0 && internal_key.size() > internal_key_extra_bytes);
 
     // covert internal_key to user key for comparison
-    Slice key = Slice(internal_key.data(), internal_key.size() - internal_key_extra_bytes);
+    Slice user_key = Slice(internal_key.data(), internal_key.size() - internal_key_extra_bytes);
 
     if (!valid || range_length == 0) {
         return -1;
@@ -311,10 +333,10 @@ int SliceVecRange::find(const Slice& internal_key) const {
     
     while (left <= right) {
         int mid = left + (right - left) / 2;
-        Slice mid_key = userKeyAt(mid); // use user key for inner comparison
-        if (mid_key == key) {
+        Slice mid_user_key = userKeyAt(mid); // use user key for inner comparison
+        if (mid_user_key == user_key) {
             return mid;
-        } else if (mid_key < key) {
+        } else if (mid_user_key < user_key) {
             left = mid + 1;
         } else {
             right = mid - 1;

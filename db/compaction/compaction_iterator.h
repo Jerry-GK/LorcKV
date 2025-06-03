@@ -257,6 +257,8 @@ class CompactionIterator {
   uint64_t NumInputEntryScanned() const { return input_.NumItered(); }
   Status InputStatus() const { return input_.status(); }
 
+  const Slice& actual_value() const;
+
   bool IsDeleteRangeSentinelKey() const { return is_range_del_; }
 
  private:
@@ -494,6 +496,7 @@ class CompactionIterator {
   // Stores whether the current compaction iterator output
   // is a range tombstone start key.
   bool is_range_del_{false};
+  Slice value_before_extraction_;
 };
 
 inline bool CompactionIterator::DefinitelyInSnapshot(SequenceNumber seq,

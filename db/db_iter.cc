@@ -297,7 +297,7 @@ bool DBIter::SetValueAndColumnsFromMergeResult(const Status& merge_status,
     return true;
   }
 
-  assert(result_type == kTypeValue);
+  assert(result_type == kTypeValue || result_type == kTypeRangeCacheValue);
   SetValueAndColumnsFromPlain(pinned_value_.data() ? pinned_value_
                                                    : saved_value_);
   valid_ = true;
@@ -451,6 +451,7 @@ bool DBIter::FindNextUserEntryInternal(bool skipping_saved_key,
           case kTypeValuePreferredSeqno:
           case kTypeBlobIndex:
           case kTypeWideColumnEntity:
+          case kTypeRangeCacheValue:
             if (!PrepareValueInternal()) {
               return false;
             }
@@ -472,7 +473,8 @@ bool DBIter::FindNextUserEntryInternal(bool skipping_saved_key,
               }
             } else {
               assert(ikey_.type == kTypeValue ||
-                     ikey_.type == kTypeValuePreferredSeqno);
+                     ikey_.type == kTypeValuePreferredSeqno ||
+                     ikey_.type == kTypeRangeCacheValue);
               Slice value = iter_.value();
               saved_write_unix_time_ = iter_.write_unix_time();
               if (ikey_.type == kTypeValuePreferredSeqno) {
@@ -642,7 +644,7 @@ bool DBIter::MergeValuesNewToOld() {
       return false;
     }
 
-    if (kTypeValue == ikey.type || kTypeValuePreferredSeqno == ikey.type) {
+    if (kTypeValue == ikey.type || kTypeValuePreferredSeqno == ikey.type || kTypeRangeCacheValue == ikey.type) {
       Slice value = iter_.value();
       saved_write_unix_time_ = iter_.write_unix_time();
       if (kTypeValuePreferredSeqno == ikey.type) {
@@ -904,7 +906,7 @@ bool DBIter::FindValueForCurrentKey() {
   merge_context_.Clear();
   current_entry_is_merged_ = false;
   // last entry before merge (could be kTypeDeletion,
-  // kTypeDeletionWithTimestamp, kTypeSingleDeletion, kTypeValue
+  // kTypeDeletionWithTimestamp, kTypeSingleDeletion, kTypeValue, kTypeRangeCacheValue,
   // kTypeBlobIndex, kTypeWideColumnEntity or kTypeValuePreferredSeqno)
   ValueType last_not_merge_type = kTypeDeletion;
   ValueType last_key_entry_type = kTypeDeletion;
@@ -985,6 +987,7 @@ bool DBIter::FindValueForCurrentKey() {
       case kTypeValuePreferredSeqno:
       case kTypeBlobIndex:
       case kTypeWideColumnEntity:
+      case kTypeRangeCacheValue:
         if (iter_.iter()->IsValuePinned()) {
           saved_write_unix_time_ = iter_.write_unix_time();
           if (last_key_entry_type == kTypeValuePreferredSeqno) {
@@ -1090,7 +1093,8 @@ bool DBIter::FindValueForCurrentKey() {
         return true;
       } else {
         assert(last_not_merge_type == kTypeValue ||
-               last_not_merge_type == kTypeValuePreferredSeqno);
+               last_not_merge_type == kTypeValuePreferredSeqno ||
+               last_not_merge_type == kTypeRangeCacheValue);
         if (!MergeWithPlainBaseValue(pinned_value_, saved_key_.GetUserKey())) {
           return false;
         }
@@ -1099,6 +1103,7 @@ bool DBIter::FindValueForCurrentKey() {
       break;
     case kTypeValue:
     case kTypeValuePreferredSeqno:
+    case kTypeRangeCacheValue:
       SetValueAndColumnsFromPlain(pinned_value_);
 
       break;
@@ -1199,7 +1204,8 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
     Slice ts = ExtractTimestampFromUserKey(ikey.user_key, timestamp_size_);
     saved_timestamp_.assign(ts.data(), ts.size());
   }
-  if (ikey.type == kTypeValue || ikey.type == kTypeValuePreferredSeqno ||
+  if (ikey.type == kTypeValue || ikey.type == kTypeValuePreferredSeqno || ikey.type == kTypeRangeCacheValue ||
+  // kTypeValue or kTypeValuePreferredSeqno or kTypeRangeCacheValue
       ikey.type == kTypeBlobIndex || ikey.type == kTypeWideColumnEntity) {
     assert(iter_.iter()->IsValuePinned());
     saved_write_unix_time_ = iter_.write_unix_time();
@@ -1217,7 +1223,7 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
         return false;
       }
     } else {
-      assert(ikey.type == kTypeValue || ikey.type == kTypeValuePreferredSeqno);
+      assert(ikey.type == kTypeValue || ikey.type == kTypeValuePreferredSeqno || ikey.type == kTypeRangeCacheValue);
       SetValueAndColumnsFromPlain(pinned_value_);
     }
 
@@ -1263,7 +1269,7 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
       return false;
     }
 
-    if (ikey.type == kTypeValue || ikey.type == kTypeValuePreferredSeqno) {
+    if (ikey.type == kTypeValue || ikey.type == kTypeValuePreferredSeqno || ikey.type == kTypeRangeCacheValue) {
       Slice value = iter_.value();
       if (ikey.type == kTypeValuePreferredSeqno) {
         value = ParsePackedValueForValue(value);

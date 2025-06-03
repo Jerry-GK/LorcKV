@@ -2074,7 +2074,7 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
       version->Ref();
       uint64_t num_input_entries = 0;
       s = BuildTable(dbname_, versions_.get(), immutable_db_options_, tboptions,
-                     file_options_for_compaction_, cfd->table_cache(),
+                     file_options_for_compaction_, cfd->table_cache(), nullptr /* no range cache in recover */,
                      iter.get(), std::move(range_del_iters), &meta,
                      &blob_file_additions, snapshot_seqs, earliest_snapshot,
                      earliest_write_conflict_snapshot, kMaxSequenceNumber,

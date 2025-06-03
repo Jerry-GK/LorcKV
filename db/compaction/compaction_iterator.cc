@@ -106,7 +106,8 @@ CompactionIterator::CompactionIterator(
       current_key_committed_(false),
       cmp_with_history_ts_low_(0),
       level_(compaction_ == nullptr ? 0 : compaction_->level()),
-      preserve_seqno_after_(preserve_seqno_min.value_or(earliest_snapshot)) {
+      preserve_seqno_after_(preserve_seqno_min.value_or(earliest_snapshot)),
+      value_before_extraction_() {
   assert(snapshots_ != nullptr);
   assert(preserve_seqno_after_ <= earliest_snapshot_);
 
@@ -1120,6 +1121,8 @@ void CompactionIterator::NextFromInput() {
 }
 
 bool CompactionIterator::ExtractLargeValueIfNeededImpl() {
+  value_before_extraction_.clear();
+
   if (!blob_file_builder_) {
     return false;
   }
@@ -1138,6 +1141,7 @@ bool CompactionIterator::ExtractLargeValueIfNeededImpl() {
     return false;
   }
 
+  value_before_extraction_ = value_;
   value_ = blob_index_;
 
   return true;
@@ -1315,6 +1319,13 @@ void CompactionIterator::PrepareOutput() {
       }
     }
   }
+}
+
+const Slice& CompactionIterator::actual_value() const {
+  if (!value_before_extraction_.empty()) {
+    return value_before_extraction_;
+  }
+  return value_;
 }
 
 inline SequenceNumber CompactionIterator::findEarliestVisibleSnapshot(

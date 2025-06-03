@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <climits>
+#include <shared_mutex>
 #include "rocksdb/rbtree_vec_lorc.h"
 #include "rocksdb/rbtree_vec_lorc_iter.h"
 #include "memory/arena.h"
@@ -10,24 +11,26 @@
 namespace ROCKSDB_NAMESPACE {
 
 RBTreeSliceVecRangeCache::RBTreeSliceVecRangeCache(size_t capacity_, bool enable_logger_)
-    : LogicallyOrderedSliceVecRangeCache(capacity_, enable_logger_) {
+    : LogicallyOrderedSliceVecRangeCache(capacity_, enable_logger_), cache_timestamp(0) {
 }
 
 RBTreeSliceVecRangeCache::~RBTreeSliceVecRangeCache() {
+    std::unique_lock<std::shared_mutex> lock(cache_mutex_); // Lock for destruction
     orderedRanges.clear();
     lengthMap.clear();
 }
 
 void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
+    std::unique_lock<std::shared_mutex> lock(cache_mutex_); // Acquire unique lock for writing
     std::chrono::high_resolution_clock::time_point start_time;
     if (this->enable_statistic) {
         start_time = std::chrono::high_resolution_clock::now();
     }
-    
+
     std::vector<SliceVecRange> mergedRanges; 
     std::string newRangeStr = newRefRange.toString();
 
-    // Find the first SliceVecRange that may overlap with newRefRange
+    // Find the first SliceVecRange that may overlap with newRefRange (keys in ref ranges are all user_key)
     auto it = orderedRanges.upper_bound(SliceVecRange(newRefRange.startKey()));
     if (it != orderedRanges.begin()) {
         --it;
@@ -117,6 +120,9 @@ void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
     // Debug output: print all ranges in order
     logger.debug("----------------------------------------");
     logger.debug("All ranges after putRange: " + newRangeStr);
+    for (auto itt = orderedRanges.begin(); itt != orderedRanges.end(); ++itt) {
+        logger.debug("SliceVecRange: " + itt->toString());
+    }
     logger.debug("Total SliceVecRange size: " + std::to_string(this->current_size));
     logger.debug("Total SliceVecRange length: " + std::to_string(this->total_range_length));
     logger.debug("Total SliceVecRange num: " + std::to_string(this->orderedRanges.size()));
@@ -132,23 +138,34 @@ void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
     // deconstruction of the overlapping strings of old ranges with the deconstruction of leftRanges and rightRanges
 }
 
-bool RBTreeSliceVecRangeCache::updateEntry(const Slice& key, const Slice& value) {
+bool RBTreeSliceVecRangeCache::updateEntry(const Slice& internal_key, const Slice& value) {
+    std::unique_lock<std::shared_mutex> lock(cache_mutex_);
     // Update the entry in the SliceVecRange
-    auto it = orderedRanges.upper_bound(SliceVecRange(key));
-    if (it == orderedRanges.begin()) {
+    Slice user_key = Slice(internal_key.data(), internal_key.size() - SliceVecRange::internal_key_extra_bytes);
+    auto it = orderedRanges.upper_bound(SliceVecRange(internal_key));
+    if (it != orderedRanges.begin()) {
         it--;
     }
-    if (it == orderedRanges.end() || it->startUserKey() > key || it->endUserKey() < key) {
+    if (it == orderedRanges.end() || it->startUserKey() > user_key || it->endUserKey() < user_key) {
         return false;
     }
-    return it->update(key, value);
+    ParsedInternalKey parsed_internal_key;
+    Status s = ParseInternalKey(internal_key, &parsed_internal_key, false);
+    SequenceNumber seq_num = parsed_internal_key.sequence;
+    ValueType type = parsed_internal_key.type;
+    return it->update(internal_key, value);
 }
 
-void RBTreeSliceVecRangeCache::victim() {
+void RBTreeSliceVecRangeCache::victim() {    
+    std::unique_lock<std::shared_mutex> lock(cache_mutex_);
     // Evict the shortest SliceVecRange to minimize impact
     if (this->current_size <= this->capacity) {
         return;
     }
+    if (lengthMap.empty()) {
+        return;
+    }
+    
     auto victimRangeStartKey = lengthMap.begin()->second;
     // find the SliceVecRange in orderedRanges and remove it
     auto it = orderedRanges.find(SliceVecRange(victimRangeStartKey));
@@ -162,9 +179,9 @@ void RBTreeSliceVecRangeCache::victim() {
     // If only one SliceVecRange remains, truncate it to fit capacity
     if (orderedRanges.size() > 1 || this->capacity <= 0) {
         logger.debug("Victim: " + it->toString());
-        orderedRanges.erase(it);
         this->current_size -= it->byteSize();
         this->total_range_length -= it->length();
+        orderedRanges.erase(it);
         lengthMap.erase(lengthMap.begin());
     } else {
         // Truncate the last remaining SliceVecRange
@@ -178,6 +195,7 @@ void RBTreeSliceVecRangeCache::victim() {
 }
 
 void RBTreeSliceVecRangeCache::pinRange(std::string startKey) {
+    std::unique_lock<std::shared_mutex> lock(cache_mutex_);
     auto it = orderedRanges.find(SliceVecRange(startKey));
     if (it != orderedRanges.end() && it->startUserKey() == startKey) {
         // update the timestamp
@@ -186,8 +204,27 @@ void RBTreeSliceVecRangeCache::pinRange(std::string startKey) {
 }
 
 SliceVecRangeCacheIterator* RBTreeSliceVecRangeCache::newSliceVecRangeCacheIterator(Arena* arena) const {
+    std::shared_lock<std::shared_mutex> lock(cache_mutex_); 
     auto mem = arena->AllocateAligned(sizeof(RBTreeSliceVecRangeCacheIterator));
     return new (mem) RBTreeSliceVecRangeCacheIterator(this);
+}
+
+void RBTreeSliceVecRangeCache::printAllRanges() const {
+    std::shared_lock<std::shared_mutex> lock(cache_mutex_); // Acquire shared lock for reading
+    logger.debug("All ranges in RBTreeSliceVecRangeCache:");
+    for (const auto& range : orderedRanges) {
+        logger.debug(range.toString());
+    }
+
+    logger.debug("All keys in RBTreeSliceVecRangeCache:");
+    for (const auto& range : orderedRanges) {
+        for (size_t i = 0; i < range.length(); ++i) {
+            ParsedInternalKey parsed_key;
+            Status s = ParseInternalKey(range.internalKeyAt(i), &parsed_key, false);
+            logger.debug("User Key: " + parsed_key.user_key.ToString() + ", Seq = " + std::to_string(parsed_key.sequence) +
+                         ", Type = " + std::to_string(static_cast<unsigned char>(parsed_key.type)));
+        }
+    }
 }
 
 }  // namespace ROCKSDB_NAMESPACE

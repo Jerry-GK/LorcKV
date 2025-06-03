@@ -135,7 +135,7 @@ public:
      * Update an entry in existing ranges
      * Return false if the key is not found
      */
-    virtual bool updateEntry(const Slice& key, const Slice& value) = 0;
+    virtual bool updateEntry(const Slice& internal_key, const Slice& value) = 0;
 
     /**
      * Remove or truncate entries to maintain cache size within limits.
@@ -180,6 +180,8 @@ public:
      */
     virtual SliceVecRangeCacheIterator* newSliceVecRangeCacheIterator(Arena* arena) const = 0;
 
+    virtual void printAllRanges() const = 0;
+
 protected:
     friend class SliceVecRangeCacheIterator;
 
@@ -190,7 +192,7 @@ protected:
     bool enable_statistic; // initialize to false
     CacheStatistic cache_statistic;
 
-    LorcLogger logger;
+    mutable LorcLogger logger;
 
 private:
     int full_hit_count;

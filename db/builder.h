@@ -23,6 +23,7 @@
 #include "rocksdb/status.h"
 #include "rocksdb/table_properties.h"
 #include "rocksdb/types.h"
+#include "rocksdb/vec_lorc.h"
 
 namespace ROCKSDB_NAMESPACE {
 
@@ -53,6 +54,7 @@ Status BuildTable(
     const std::string& dbname, VersionSet* versions,
     const ImmutableDBOptions& db_options, const TableBuilderOptions& tboptions,
     const FileOptions& file_options, TableCache* table_cache,
+    const std::shared_ptr<LogicallyOrderedSliceVecRangeCache> range_cache,
     InternalIterator* iter,
     std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>
         range_del_iters,
