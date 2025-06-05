@@ -151,6 +151,15 @@ Slice RBTreeSliceVecRangeCacheIterator::key() const {
     return current_range->internalKeyAt(current_index);
 }
 
+Slice RBTreeSliceVecRangeCacheIterator::userKey() const {
+    std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
+    static std::string empty_string;
+    if (!valid) {
+        return empty_string;
+    }
+    return current_range->userKeyAt(current_index);
+}
+
 Slice RBTreeSliceVecRangeCacheIterator::value() const {
     std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
     static std::string empty_string;

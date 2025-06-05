@@ -23,6 +23,7 @@ public:
     void Next() override;
     void Prev() override;
     Slice key() const override;
+    Slice userKey() const override;
     Slice value() const override;
     Status status() const override;
 

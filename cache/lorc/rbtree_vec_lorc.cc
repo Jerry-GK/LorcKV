@@ -18,6 +18,7 @@ RBTreeSliceVecRangeCache::~RBTreeSliceVecRangeCache() {
     std::unique_lock<std::shared_mutex> lock(cache_mutex_); // Lock for destruction
     orderedRanges.clear();
     lengthMap.clear();
+    ranges_view.clear();
 }
 
 void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
@@ -56,6 +57,8 @@ void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
             if (lastStartKey < it->startUserKey()) {
                 SliceVecRange nonOverlappingSubRange = newRefRange.dumpSubRange(lastStartKey, it->startUserKey(), leftIncluded, false);
                 if (nonOverlappingSubRange.isValid() && nonOverlappingSubRange.length() > 0) {
+                    // put into logical ranges view with right concation, with left concation if not leftIncluded
+                    this->ranges_view.putRange(LogicalRange(nonOverlappingSubRange.startUserKey().ToString(), nonOverlappingSubRange.endUserKey().ToString(), nonOverlappingSubRange.length(), true), !leftIncluded, true);
                     mergedRanges.emplace_back(std::move(nonOverlappingSubRange));
                 }
             }
@@ -85,6 +88,8 @@ void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
     if (leftIncluded ? lastStartKey <= newRefRange.endKey() : lastStartKey < newRefRange.endKey()) {
         SliceVecRange nonOverlappingSubRange = newRefRange.dumpSubRange(lastStartKey, newRefRange.endKey(), leftIncluded, true);
         if (nonOverlappingSubRange.isValid() && nonOverlappingSubRange.length() > 0) {
+            // put into logical ranges view with left concation if not leftIncluded
+            this->ranges_view.putRange(LogicalRange(nonOverlappingSubRange.startUserKey().ToString(), nonOverlappingSubRange.endUserKey().ToString(), nonOverlappingSubRange.length(), true), !leftIncluded, false);
             mergedRanges.emplace_back(std::move(nonOverlappingSubRange));
         }
     }
@@ -119,13 +124,9 @@ void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
 
     // Debug output: print all ranges in order
     logger.debug("----------------------------------------");
-    logger.debug("All ranges after putRange: " + newRangeStr);
-    for (auto itt = orderedRanges.begin(); itt != orderedRanges.end(); ++itt) {
-        logger.debug("SliceVecRange: " + itt->toString());
-    }
-    logger.debug("Total SliceVecRange size: " + std::to_string(this->current_size));
-    logger.debug("Total SliceVecRange length: " + std::to_string(this->total_range_length));
-    logger.debug("Total SliceVecRange num: " + std::to_string(this->orderedRanges.size()));
+    this->printAllLogicalRanges();
+    logger.debug("----------------------------------------");
+    this->printAllPhysicalRanges();
     logger.debug("----------------------------------------");
 
     if (this->enable_statistic) {
@@ -157,33 +158,57 @@ bool RBTreeSliceVecRangeCache::updateEntry(const Slice& internal_key, const Slic
 }
 
 void RBTreeSliceVecRangeCache::victim() {    
-    std::unique_lock<std::shared_mutex> lock(cache_mutex_);
     // Evict the shortest SliceVecRange to minimize impact
     if (this->current_size <= this->capacity) {
         return;
     }
-    if (lengthMap.empty()) {
+    if (lengthMap.empty() || orderedRanges.empty()) {
         return;
     }
     
-    auto victimRangeStartKey = lengthMap.begin()->second;
-    // find the SliceVecRange in orderedRanges and remove it
-    auto it = orderedRanges.find(SliceVecRange(victimRangeStartKey));
-    if (it == orderedRanges.end() || it->startUserKey() != victimRangeStartKey) {
-        logger.error("Victim SliceVecRange not found in orderedRanges");
-        assert(false);
-        return;
+    // victimRangeStartKey is the start key of range whose len is the smallest
+    // TODO(jr): victim better
+    std::string victimRangeStartKey;
+    std::string victimRangeEndKey;
+    size_t min_len = 0;
+    for (auto& range : ranges_view.getLogicalRanges()) {
+        if (range.length() < min_len || min_len == 0) {
+            min_len = range.length();
+            victimRangeStartKey = range.startUserKey();
+            victimRangeEndKey = range.endUserKey();
+        }
     }
 
     // If multiple ranges exist, remove the victim
     // If only one SliceVecRange remains, truncate it to fit capacity
     if (orderedRanges.size() > 1 || this->capacity <= 0) {
-        logger.debug("Victim: " + it->toString());
-        this->current_size -= it->byteSize();
-        this->total_range_length -= it->length();
-        orderedRanges.erase(it);
-        lengthMap.erase(lengthMap.begin());
+        for (auto it = orderedRanges.begin(); it != orderedRanges.end();) {
+            if (it->startUserKey().ToString() >= victimRangeStartKey && 
+                it->endUserKey().ToString() <= victimRangeEndKey) {
+                logger.debug("Victim: " + it->toString());
+                this->current_size -= it->byteSize();
+                this->total_range_length -= it->length();
+                
+                // Remove from lengthMap
+                auto range = lengthMap.equal_range(it->length());
+                for (auto mapIt = range.first; mapIt != range.second; ++mapIt) {
+                    if (mapIt->second == it->startUserKey().ToString()) {
+                        lengthMap.erase(mapIt);
+                        break;
+                    }
+                }
+                
+                // Erase from orderedRanges and move to next iterator
+                it = orderedRanges.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        // Remove the logical range from ranges_view
+        ranges_view.removeRange(victimRangeStartKey);
     } else {
+        auto it = orderedRanges.find(SliceVecRange(victimRangeStartKey));
+        assert(it != orderedRanges.end() && it->startUserKey() == victimRangeStartKey);
         // Truncate the last remaining SliceVecRange
         logger.debug("Truncate: " + it->toString());
         lengthMap.erase(lengthMap.find(it->length()));
@@ -191,6 +216,8 @@ void RBTreeSliceVecRangeCache::victim() {
         lengthMap.emplace(it->length(), it->startUserKey().ToString());
         this->current_size = it->byteSize();
         this->total_range_length = it->length();
+        ranges_view.removeRange(victimRangeStartKey);
+        ranges_view.putRange(LogicalRange(it->startUserKey().ToString(), it->endUserKey().ToString(), it->length(), true), false, false);
     }
 }
 
@@ -205,16 +232,43 @@ void RBTreeSliceVecRangeCache::pinRange(std::string startKey) {
 
 SliceVecRangeCacheIterator* RBTreeSliceVecRangeCache::newSliceVecRangeCacheIterator(Arena* arena) const {
     std::shared_lock<std::shared_mutex> lock(cache_mutex_); 
+    if (arena == nullptr) {
+        return new RBTreeSliceVecRangeCacheIterator(this);
+    }
     auto mem = arena->AllocateAligned(sizeof(RBTreeSliceVecRangeCacheIterator));
     return new (mem) RBTreeSliceVecRangeCacheIterator(this);
 }
 
-void RBTreeSliceVecRangeCache::printAllRanges() const {
-    std::shared_lock<std::shared_mutex> lock(cache_mutex_); // Acquire shared lock for reading
-    logger.debug("All ranges in RBTreeSliceVecRangeCache:");
-    for (const auto& range : orderedRanges) {
-        logger.debug(range.toString());
+void RBTreeSliceVecRangeCache::printAllPhysicalRanges() const {
+    logger.debug("All physical ranges in RBTreeSliceVecRangeCache:");
+    for (auto it = orderedRanges.begin(); it != orderedRanges.end(); ++it) {
+        logger.debug("SliceVecRange: " + it->toString());
     }
+    logger.debug("Total SliceVecRange size: " + std::to_string(this->current_size));
+    logger.debug("Total SliceVecRange length: " + std::to_string(this->total_range_length));
+    logger.debug("Total SliceVecRange num: " + std::to_string(this->orderedRanges.size()));
+}
+
+void RBTreeSliceVecRangeCache::printAllLogicalRanges() const {
+    logger.debug("All logical ranges in RBTreeSliceVecRangeCache:");
+    auto logical_ranges = this->ranges_view.getLogicalRanges();
+    size_t total_len = 0;
+    for (auto it = logical_ranges.begin(); it != logical_ranges.end(); ++it) {
+        logger.debug("LogicalRange: " + it->toString());
+        total_len += it->length();
+    }
+    logger.debug("Total LogicalRange length: " + std::to_string(total_len));
+    logger.debug("Total LogicalRange num: " + std::to_string(logical_ranges.size()));
+}
+
+void RBTreeSliceVecRangeCache::printAllRangesWithKeys() const {
+    std::shared_lock<std::shared_mutex> lock(cache_mutex_); // Acquire shared lock for reading
+
+    logger.debug("----------------------------------------");
+    this->printAllLogicalRanges();
+    logger.debug("----------------------------------------");
+    this->printAllPhysicalRanges();
+    logger.debug("----------------------------------------");
 
     logger.debug("All keys in RBTreeSliceVecRangeCache:");
     for (const auto& range : orderedRanges) {
@@ -225,6 +279,7 @@ void RBTreeSliceVecRangeCache::printAllRanges() const {
                          ", Type = " + std::to_string(static_cast<unsigned char>(parsed_key.type)));
         }
     }
+    logger.debug("----------------------------------------");
 }
 
 }  // namespace ROCKSDB_NAMESPACE

@@ -32,7 +32,9 @@ bool do_update = true;
 
 bool enable_blob_cache = false;
 bool enable_lorc = true;
+
 bool enable_timer = true;
+bool preheat_boundary = true;
 
 const int start_key = 100000; // Start key for range
 const int end_key = 999999;   // End key for range
@@ -41,9 +43,11 @@ const int max_range_query_len = total_len * 0.01; // 1% of total length
 const int min_range_query_len = total_len * 0.01;
 const int num_range_queries = 2000;
 
-double warm_up_ratio = 200.0 / num_range_queries;
-double p_update = 0.5;  // 20% update before each scan
-int num_update = 1000;   // num of entries to update of each update
+// double warm_up_ratio = 200.0 / num_range_queries;
+double warm_up_ratio = 0.5;
+double p_update = 0.25;  // 20% update before each scan
+// int num_update = ((max_range_query_len + min_range_query_len) / 2) * 0.1;   // num of entries to update of each update
+int num_update = 1;
 
 double hot_data_precentage = 0.05; // hot data only range with start key >= (end_key - total_len * hot_data_precentage) will be queried
 bool only_update_hot_data = false; // only update hot data, i.e., range with start key >= (end_key - total_len * hot_data_precentage)
@@ -51,18 +55,20 @@ bool only_update_hot_data = false; // only update hot data, i.e., range with sta
 // block cache size will always be set to 64MB later if enable_blob is true
 // size_t block_cache_size = 0; // 0MB
 // size_t block_cache_size = 64 * 1024 * 1024; // 64MB
-size_t block_cache_size = 128 * 1024 * 1024; // 128MB
+// size_t block_cache_size = 128 * 1024 * 1024; // 128MB
 // size_t block_cache_size = 1024 * 1024 * 1024; // 1GB
-// size_t block_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
+size_t block_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
 
 // size_t blob_cache_size = 0; // 0MB
 // size_t blob_cache_size = (size_t)64 * 1024 * 1024; // 64MB
+// size_t blob_cache_size = (size_t)128 * 1024 * 1024; // 128MB
 // size_t blob_cache_size = (size_t)1024 * 1024 * 1024; // 1GB
 // size_t blob_cache_size = (size_t)2048  * 1024 * 1024; // 2GB
 size_t blob_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
 
 // size_t range_cache_size = 0; // 0MB
 // size_t range_cache_size = (size_t)64 * 1024 * 1024; // 64MB
+// size_t range_cache_size = (size_t)128 * 1024 * 1024; // 128MB
 // size_t range_cache_size = (size_t)1024 * 1024 * 1024; // 1GB
 // size_t range_cache_size = (size_t)2048 * 1024 * 1024; // 2GB
 size_t range_cache_size = (size_t)4096 * 1024 * 1024; // 4GB
@@ -194,11 +200,19 @@ void warmUpEnd() {
 int main() {
     // 定义CSV文件路径
     string csv_path = "./csv/scan_performance";
-    if (enable_blob_cache) {
+    if (enable_blob) {
+        csv_path += "_blobdb";
+    } else {
+        csv_path += "_rocksdb";
+    }
+    if (enable_blob && enable_blob_cache) {
         csv_path += "_blobcache";
     }
     if (enable_lorc) {
         csv_path += "_lorc";
+    } 
+    if (!enable_blob &&!enable_blob_cache && !enable_lorc) {
+        csv_path += "_blockcache";
     }
     if (do_update) {
         csv_path += "_update";
@@ -248,7 +262,7 @@ int main() {
     }
 
     // Configure block cache
-    // block_cache_size = enable_blob ? 64 * 1024 * 1024 : block_cache_size;
+    block_cache_size = (enable_blob || enable_lorc) ? 128 * 1024 * 1024 : block_cache_size;
     auto block_cache = NewLRUCache(block_cache_size);
     BlockBasedTableOptions table_options;
     table_options.block_cache = block_cache;
@@ -312,11 +326,13 @@ int main() {
             int query_start_key = start_key_dist(gen);
 
             // preheat
-            if (i == 0) {
-                query_start_key = query_key_left_bound; // preheat the left bound
-            }
-            if (i == 1) {
-                query_start_key = max_start; // preheat the right bound
+            if (preheat_boundary) {
+                if (i == 0) {
+                    query_start_key = query_key_left_bound; // preheat the left bound
+                }
+                if (i == 1) {
+                    query_start_key = max_start; // preheat the right bound
+                }
             }
             
             std::string start_key_str = gen_key(query_start_key);

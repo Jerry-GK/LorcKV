@@ -2309,6 +2309,48 @@ Status DBImpl::ScanImpl(const ReadOptions& _read_options,
                         std::vector<std::string>* values) {
   // TODO(jr): use scan_impl_options as parameter 
 
+  return ScanWithIteratorInternal(_read_options, column_family, start_key, end_key, len, keys, values);
+  // return ScanWithPredivisionInternal(_read_options, column_family, start_key, end_key, len, keys, values);
+}
+
+Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
+                        ColumnFamilyHandle* column_family,
+                        const Slice& start_key,
+                        const Slice& end_key,
+                        size_t len,
+                        std::vector<std::string>* keys,
+                        std::vector<std::string>* values) {
+  auto lorc = column_family->GetRangeCache();
+  if (!lorc) {
+    return ScanWithIteratorInternal(_read_options, column_family, start_key, end_key, len, keys, values);
+  }
+
+  // TODO(jr): implement predivision scanw
+  if (lorc && lorc->getTotalRangeLength() >= 45001) {
+    // full hit and completedly read from range cache
+    size_t count = 0;
+    SliceVecRangeCacheIterator* range_cache_iter = lorc->newSliceVecRangeCacheIterator(nullptr);
+    range_cache_iter->Seek(start_key);
+    for (; range_cache_iter->Valid(); range_cache_iter->Next()) {
+      keys->emplace_back(range_cache_iter->userKey().ToString());
+      values->emplace_back(range_cache_iter->value().ToString());
+      count++;
+      if ((!end_key.empty() && range_cache_iter->key() >= end_key) || (len != 0 && count >= len)) {
+        break;  // terminate by end_key
+      }
+    }
+    return Status();
+  }
+  return Status();
+}
+
+Status DBImpl::ScanWithIteratorInternal(const ReadOptions& _read_options,
+                        ColumnFamilyHandle* column_family,
+                        const Slice& start_key,
+                        const Slice& end_key,
+                        size_t len,
+                        std::vector<std::string>* keys,
+                        std::vector<std::string>* values) {
   // using range cache if needed
   auto lorc = column_family->GetRangeCache();
   const Snapshot* snapshot = _read_options.snapshot ? _read_options.snapshot : this->GetSnapshot();
@@ -2343,7 +2385,7 @@ Status DBImpl::ScanImpl(const ReadOptions& _read_options,
       break;  // terminate by len
     }
     if (!end_key.empty() && it->key() >= end_key) {
-      break;  // terminare by end_key
+      break;  // terminate by end_key
     }
   }
 

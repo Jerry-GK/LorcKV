@@ -6,6 +6,7 @@
 #include <string>
 #include <memory>
 #include <chrono>
+#include "rocksdb/logical_range.h"
 #include "rocksdb/vec_range.h"
 #include "rocksdb/ref_vec_range.h"
 
@@ -142,6 +143,18 @@ public:
      */
     virtual void victim() = 0;
 
+    virtual size_t getCapacity() const {
+        return capacity;
+    }
+
+    virtual size_t getCurrentSize() const {
+        return current_size;
+    }
+
+    virtual size_t getTotalRangeLength() const {
+        return total_range_length;
+    }
+
     /**
      * Get enableStatistic
      */
@@ -180,10 +193,16 @@ public:
      */
     virtual SliceVecRangeCacheIterator* newSliceVecRangeCacheIterator(Arena* arena) const = 0;
 
-    virtual void printAllRanges() const = 0;
+    virtual void printAllRangesWithKeys() const = 0;
 
 protected:
+    virtual void printAllPhysicalRanges() const = 0;
+
+    virtual void printAllLogicalRanges() const = 0;
+
     friend class SliceVecRangeCacheIterator;
+
+    LogicalRangesView ranges_view;
 
     size_t capacity;
     size_t current_size;

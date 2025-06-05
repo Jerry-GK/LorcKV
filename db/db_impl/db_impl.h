@@ -703,6 +703,24 @@ class DBImpl : public DB {
                   std::vector<std::string>* keys,
                   std::vector<std::string>* values);
 
+  // Scan using iterator over all levels (including range cache if exists).                
+  Status ScanWithIteratorInternal(const ReadOptions& options,
+                                  ColumnFamilyHandle* column_family,
+                                  const Slice& start_key,
+                                  const Slice& end_key,
+                                  size_t len,
+                                  std::vector<std::string>* keys,
+                                  std::vector<std::string>* values);
+
+  // Scan afte pre-division. Retrieve ranges in the range cache directly, and scan using iterator on non-hit ranges.
+  Status ScanWithPredivisionInternal(const ReadOptions& options,
+                                      ColumnFamilyHandle* column_family,
+                                      const Slice& start_key,
+                                      const Slice& end_key,
+                                      size_t len,
+                                      std::vector<std::string>* keys,
+                                      std::vector<std::string>* values);
+
   // If `snapshot` == kMaxSequenceNumber, set a recent one inside the file.
   ArenaWrappedDBIter* NewIteratorImpl(const ReadOptions& options,
                                       ColumnFamilyHandleImpl* cfh,

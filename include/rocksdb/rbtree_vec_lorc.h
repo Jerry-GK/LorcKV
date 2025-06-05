@@ -33,8 +33,13 @@ public:
      */
     void pinRange(std::string startKey);
 
-    void printAllRanges() const override;
+    void printAllRangesWithKeys() const override;
     
+protected:
+    void printAllPhysicalRanges() const override;
+
+    void printAllLogicalRanges() const override;
+
 private:
     friend class RBTreeSliceVecRangeCacheIterator;
     std::set<SliceVecRange> orderedRanges;     // Container for ranges sorted by start key

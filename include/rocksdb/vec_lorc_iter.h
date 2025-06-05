@@ -24,6 +24,7 @@ public:
     virtual void Next() override = 0;
     virtual void Prev() override = 0;
     virtual Slice key() const override = 0;
+    virtual Slice userKey() const = 0;
     virtual Slice value() const override = 0;
     virtual Status status() const override = 0;
 

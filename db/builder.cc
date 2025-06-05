@@ -220,6 +220,7 @@ Status BuildTable(
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
 
+      // update entries in range cache before memtables are flushed to L0
       if (range_cache) {
         ParsedInternalKey parsed_ikey;
         Status ss = ParseInternalKey(key, &parsed_ikey, false);
