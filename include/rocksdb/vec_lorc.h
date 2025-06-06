@@ -195,6 +195,11 @@ public:
 
     virtual void printAllRangesWithKeys() const = 0;
 
+    /**
+     * TODO(jr): Explain this method whose logic is very complicated
+     */
+    virtual std::vector<LogicalRange> divideLogicalRange(const std::string& start_key, size_t len, const std::string& end_key) const = 0;
+
 protected:
     virtual void printAllPhysicalRanges() const = 0;
 

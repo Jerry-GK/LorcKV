@@ -273,8 +273,8 @@ void SliceVecRange::setTimestamp(int timestamp_) const {
 
 bool SliceVecRange::update(const Slice& internal_key, const Slice& value) const {
     assert(valid && range_length > 0 && internal_key.size() > internal_key_extra_bytes);    
-    int index = find(internal_key);
     Slice user_key = Slice(internal_key.data(), internal_key.size() - SliceVecRange::internal_key_extra_bytes);
+    int index = find(user_key);
     // dont use internal_key for comparison (the last bit may be kTypeValue in Range Cache and kTypeBlobIndex in LSM)
     if (index >= 0 && userKeyAt(index) == user_key) {
         // update the sequence number of the internal key, the type is turned to kTypeRangeCacheValue
@@ -318,11 +318,8 @@ void SliceVecRange::truncate(int targetLength) const {
     }
 }
 
-int SliceVecRange::find(const Slice& internal_key) const {
-    assert(valid && range_length > 0 && internal_key.size() > internal_key_extra_bytes);
-
-    // covert internal_key to user key for comparison
-    Slice user_key = Slice(internal_key.data(), internal_key.size() - internal_key_extra_bytes);
+int SliceVecRange::find(const Slice& key) const {
+    assert(valid && range_length > 0 && key.size() > 0);
 
     if (!valid || range_length == 0) {
         return -1;
@@ -334,9 +331,9 @@ int SliceVecRange::find(const Slice& internal_key) const {
     while (left <= right) {
         int mid = left + (right - left) / 2;
         Slice mid_user_key = userKeyAt(mid); // use user key for inner comparison
-        if (mid_user_key == user_key) {
+        if (mid_user_key == key) {
             return mid;
-        } else if (mid_user_key < user_key) {
+        } else if (mid_user_key < key) {
             left = mid + 1;
         } else {
             right = mid - 1;

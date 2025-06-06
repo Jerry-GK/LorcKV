@@ -282,4 +282,102 @@ void RBTreeSliceVecRangeCache::printAllRangesWithKeys() const {
     logger.debug("----------------------------------------");
 }
 
+std::vector<LogicalRange> RBTreeSliceVecRangeCache::divideLogicalRange(const std::string& start_key, size_t len, const std::string& end_key) const {
+    std::shared_lock<std::shared_mutex> lock(cache_mutex_);
+    
+    std::vector<LogicalRange> result;
+    
+    // Get all logical ranges
+    const auto& logical_ranges = ranges_view.getLogicalRanges();
+    
+    // Handle empty start_key (means start from the beginning)
+    std::string current_key = start_key;
+    
+    // Calculate actual end position
+    std::string actual_end_key = end_key;
+    size_t result_length = 0;
+    bool has_length_limit = (len > 0);
+    bool has_end_key_limit = !end_key.empty();
+    
+    // If there's a length limit but no end key, we need to estimate the end position based on cached data
+    // Here we simplify the handling and let the caller determine the end position through actual scanning
+    
+    size_t remaining_length = len;
+    std::string last_processed_key = current_key;
+    
+    // Iterate through all logical ranges to find overlapping parts with the query range
+    for (const auto& range : logical_ranges) {
+        std::string range_start = range.startUserKey();
+        std::string range_end = range.endUserKey();
+        
+        // If current key hasn't reached the start of this range, there's a gap
+        if (current_key < range_start) {
+            // Calculate the end position of the gap
+            std::string gap_end = range_start;
+            
+            // If there's an end key limit and the gap would exceed it, truncate the gap
+            if (has_end_key_limit && gap_end > actual_end_key) {
+                gap_end = actual_end_key;
+            }
+            
+            // Only add the gap if it's meaningful (i.e., current_key < gap_end)
+            if (current_key < gap_end) {
+                result.emplace_back(current_key, gap_end, 0, false);
+                current_key = gap_end;
+            }
+            
+            // If we've reached the end key, stop processing
+            if (has_end_key_limit && current_key >= actual_end_key) {
+                break;
+            }
+        }
+        
+        // Check if current range overlaps with the query range
+        if (current_key <= range_end && (actual_end_key.empty() || range_start < actual_end_key)) {
+            // Calculate the start and end of the overlapping part
+            std::string overlap_start = std::max(current_key, range_start);
+            std::string overlap_end = range_end;
+            
+            // If there's an end key limit, truncate the overlapping part
+            if (has_end_key_limit && overlap_end > actual_end_key) {
+                overlap_end = actual_end_key;
+            }
+            
+            // Only add if the overlapping part is meaningful
+            if (overlap_start < overlap_end) {
+                // Calculate the length in cache (simplified to use the original range length)
+                size_t cached_length = range.length();
+                
+                // If the overlap is not the complete range, the length might need adjustment
+                // Here we simplify and use the original length
+                size_t range_length = cached_length;
+                if (has_length_limit && len - result_length <= cached_length) {
+                    range_length = len - result_length;
+                }
+                result.emplace_back(overlap_start, overlap_end, range_length, true);
+                result_length += range_length;
+                current_key = overlap_end;
+            }
+            
+            // If we have a length limit and reached it, stop processing
+            if (has_length_limit && result_length >= len) {
+                break;
+            }
+            // If we've reached the end key, stop processing
+            if (has_end_key_limit && current_key >= actual_end_key) {
+                break;
+            }
+        }
+    }
+    
+    // Handle the final gap that might exist
+    if ((!has_end_key_limit || current_key < actual_end_key) && (!has_length_limit || result_length < len)) {
+        // If there's no end key limit, or we haven't reached the end key, add the final gap
+        std::string final_end = has_end_key_limit ? actual_end_key : "";
+        result.emplace_back(current_key, final_end, 0, false);
+    }
+    
+    return result;
+}
+
 }  // namespace ROCKSDB_NAMESPACE

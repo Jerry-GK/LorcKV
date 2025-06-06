@@ -46,8 +46,8 @@ const int num_range_queries = 2000;
 // double warm_up_ratio = 200.0 / num_range_queries;
 double warm_up_ratio = 0.5;
 double p_update = 0.25;  // 20% update before each scan
-// int num_update = ((max_range_query_len + min_range_query_len) / 2) * 0.1;   // num of entries to update of each update
-int num_update = 1;
+int num_update = ((max_range_query_len + min_range_query_len) / 2) * 0.1;   // num of entries to update of each update
+// int num_update = 1;
 
 double hot_data_precentage = 0.05; // hot data only range with start key >= (end_key - total_len * hot_data_precentage) will be queried
 bool only_update_hot_data = false; // only update hot data, i.e., range with start key >= (end_key - total_len * hot_data_precentage)

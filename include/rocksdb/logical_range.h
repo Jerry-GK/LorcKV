@@ -4,7 +4,6 @@
 #include <vector>
 #include <memory>
 #include <algorithm>
-#include <cassert>
 #include "rocksdb/slice.h"
 
 namespace ROCKSDB_NAMESPACE {
@@ -17,7 +16,7 @@ class LogicalRange {
 private:
     std::string start_user_key;   // start user key, non-empty
     std::string end_user_key;     // end user key, empty if not sure
-    size_t range_length;    // length of the range in bytes (non-zero)
+    size_t range_length;    // length of the range in bytes. zero if it's ended by end_key
     bool in_range_cache;
 
 public:
@@ -26,7 +25,6 @@ public:
         end_user_key = endUserKey;
         range_length = length;
         in_range_cache = inRangeCache;
-        assert(!start_user_key.empty() && range_length > 0);
     }
 
     std::string startUserKey() const {

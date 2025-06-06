@@ -13,6 +13,7 @@
 #include <alloca.h>
 #endif
 
+// #include <iostream>
 #include <cinttypes>
 #include <cstdio>
 #include <map>
@@ -83,6 +84,7 @@
 #include "rocksdb/convenience.h"
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
+#include "rocksdb/logical_range.h"
 #include "rocksdb/merge_operator.h"
 #include "rocksdb/statistics.h"
 #include "rocksdb/stats_history.h"
@@ -2309,8 +2311,8 @@ Status DBImpl::ScanImpl(const ReadOptions& _read_options,
                         std::vector<std::string>* values) {
   // TODO(jr): use scan_impl_options as parameter 
 
-  return ScanWithIteratorInternal(_read_options, column_family, start_key, end_key, len, keys, values);
-  // return ScanWithPredivisionInternal(_read_options, column_family, start_key, end_key, len, keys, values);
+  // return ScanWithIteratorInternal(_read_options, column_family, start_key, end_key, len, keys, values);
+  return ScanWithPredivisionInternal(_read_options, column_family, start_key, end_key, len, keys, values);
 }
 
 Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
@@ -2324,23 +2326,87 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
   if (!lorc) {
     return ScanWithIteratorInternal(_read_options, column_family, start_key, end_key, len, keys, values);
   }
+  
+  // TODO(jr): Add comments to explain this method whose logic is very complicated
+  std::vector<LogicalRange> divided_logical_ranges = lorc->divideLogicalRange(start_key.ToString(), len, end_key.ToString());
+  // std::cout << "Scan Range: start_key = " << start_key.ToString()
+  //           << ", end_key = " << end_key.ToString()
+  //           << ", len = " << len << std::endl;
+  // std::cout << "Divided logical ranges: " << std::endl;
+  // for (const LogicalRange& range : divided_logical_ranges) {
+  //   std::cout << "  [" << range.startUserKey() << " -> " << range.endUserKey() << "], len = " << range.length() 
+  //             << ", inRangeCache = " << range.isInRangeCache() << std::endl;
+  // }
 
-  // TODO(jr): implement predivision scanw
-  if (lorc && lorc->getTotalRangeLength() >= 45001) {
-    // full hit and completedly read from range cache
-    size_t count = 0;
-    SliceVecRangeCacheIterator* range_cache_iter = lorc->newSliceVecRangeCacheIterator(nullptr);
-    range_cache_iter->Seek(start_key);
-    for (; range_cache_iter->Valid(); range_cache_iter->Next()) {
-      keys->emplace_back(range_cache_iter->userKey().ToString());
-      values->emplace_back(range_cache_iter->value().ToString());
-      count++;
-      if ((!end_key.empty() && range_cache_iter->key() >= end_key) || (len != 0 && count >= len)) {
-        break;  // terminate by end_key
+  size_t count = 0;
+  bool terminated = false;
+  for (LogicalRange& range : divided_logical_ranges) {
+    if (terminated) {
+      break;  // already terminated by len or end_key
+    }
+    if (range.isInRangeCache()) {
+      // scan in range cache directly
+      SliceVecRangeCacheIterator* range_cache_iter = lorc->newSliceVecRangeCacheIterator(nullptr);
+      range_cache_iter->Seek(range.startUserKey());
+      for (; range_cache_iter->Valid(); range_cache_iter->Next()) {
+        keys->emplace_back(range_cache_iter->userKey().ToString());
+        values->emplace_back(range_cache_iter->value().ToString());
+        count++;
+        if (len !=0 && count >= len) {
+          terminated = true;
+          break;  // terminate by len
+        }
+        if (!end_key.empty() && range_cache_iter->key() >= end_key) {
+          terminated = true;
+          break;  // terminate by end_key
+        }
+      }
+    } else {
+      // scan with level iterators
+      const Snapshot* snapshot = _read_options.snapshot ? _read_options.snapshot : this->GetSnapshot();
+      ReferringSliceVecRange ref_slice_vec_range(true, snapshot->GetSequenceNumber());
+
+      std::string range_start_key = range.startUserKey();
+      Iterator* it = this->NewIterator(_read_options, column_family);
+      if (range_start_key.empty()) {
+        it->SeekToFirst();
+      } else {
+        it->Seek(range_start_key);
+      }
+
+      if (len != 0) {
+        keys->reserve(range.length());
+        values->reserve(range.length());
+        if (lorc) {
+          ref_slice_vec_range.reserve(range.length());
+        }
+      }
+
+      for (; it->Valid(); it->Next()) {
+        keys->emplace_back(it->key().ToString());
+        values->emplace_back(it->value().ToString());
+        if (lorc) {
+          ref_slice_vec_range.emplace(Slice(keys->back()), Slice(values->back()));
+        }
+
+        count++;
+        if (len !=0 && count >= len) {
+          terminated = true;
+          break;  // terminate by len
+        }
+        if (!end_key.empty() && it->key() >= end_key) {
+          terminated = true;
+          break;  // terminate by end_key
+        }
+      }
+
+      if (lorc) {
+        // try to put non-hit ranges to range cache
+        lorc->putRange(std::move(ref_slice_vec_range));
       }
     }
-    return Status();
   }
+  
   return Status();
 }
 

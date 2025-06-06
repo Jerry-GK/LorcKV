@@ -71,7 +71,7 @@ public:
     void truncate(int length) const;
 
     // return the first element index whose key is < greater than or equal > to key
-    int find(const Slice& internal_key) const;
+    int find(const Slice& key) const;
 
     std::string toString() const;
 

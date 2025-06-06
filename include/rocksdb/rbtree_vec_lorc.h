@@ -34,6 +34,8 @@ public:
     void pinRange(std::string startKey);
 
     void printAllRangesWithKeys() const override;
+
+    std::vector<LogicalRange> divideLogicalRange(const std::string& start_key, size_t len, const std::string& end_key) const override;
     
 protected:
     void printAllPhysicalRanges() const override;
