@@ -18,13 +18,18 @@ private:
     std::string end_user_key;     // end user key, empty if not sure
     size_t range_length;    // length of the range in bytes. zero if it's ended by end_key
     bool in_range_cache;
+    bool left_included; // true if the start user key is included in the range, false if not
+    bool right_included; // true if the end user key is included in the range, false if not
 
 public:
-    LogicalRange(const std::string& startUserKey, const std::string& endUserKey, size_t length, bool inRangeCache) {
+    LogicalRange(const std::string& startUserKey, const std::string& endUserKey, size_t length, bool inRangeCache, 
+                 bool leftIncluded, bool rightIncluded) {
         start_user_key = startUserKey;
         end_user_key = endUserKey;
         range_length = length;
         in_range_cache = inRangeCache;
+        left_included = leftIncluded;
+        right_included = rightIncluded;
     }
 
     std::string startUserKey() const {
@@ -41,6 +46,14 @@ public:
 
     bool isInRangeCache() const {
         return in_range_cache;
+    }
+
+    bool isLeftIncluded() const {
+        return left_included;
+    }
+
+    bool isRightIncluded() const {
+        return right_included;
     }
 
     std::string toString() const {
@@ -69,7 +82,6 @@ public:
         
         size_t insert_pos = it - logical_ranges.begin();
         
-        // ¼ì²é×ó²àºÏ²¢
         LogicalRange merged_range = range;
         size_t left_remove_start = insert_pos;
         
@@ -82,7 +94,9 @@ public:
                     left_range.startUserKey(),
                     merged_range.endUserKey(),
                     left_range.length() + merged_range.length(),
-                    left_range.isInRangeCache() || merged_range.isInRangeCache()
+                    true,
+                    true,
+                    true
                 );
                 left_remove_start = insert_pos - 1;
             }
@@ -97,7 +111,9 @@ public:
                     merged_range.startUserKey(),
                     right_range.endUserKey(),
                     merged_range.length() + right_range.length(),
-                    merged_range.isInRangeCache() || right_range.isInRangeCache()
+                    true,
+                    true,
+                    true
                 );
                 right_remove_end = insert_pos + 1;
             }

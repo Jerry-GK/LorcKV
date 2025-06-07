@@ -18,8 +18,8 @@ public:
     bool HasNextInRange() const override;
     void SeekToFirst() override;
     void SeekToLast() override;
-    void Seek(const Slice& target) override;
-    void SeekForPrev(const Slice& target) override;
+    void Seek(const Slice& target_internal_key) override;
+    void SeekForPrev(const Slice& target_internal_key) override;
     void Next() override;
     void Prev() override;
     Slice key() const override;

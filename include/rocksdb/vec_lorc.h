@@ -51,6 +51,10 @@ public:
     LorcLogger() : currentLevel(Level::DEBUG), enabled(true) {}
     ~LorcLogger() = default;
 
+    bool isEnabled() const {
+        return enabled;
+    }
+
     void debug(const std::string& message) {
         log(DEBUG, message);
     }
@@ -195,16 +199,16 @@ public:
 
     virtual void printAllRangesWithKeys() const = 0;
 
+    virtual void printAllPhysicalRanges() const = 0;
+
+    virtual void printAllLogicalRanges() const = 0;
+
     /**
      * TODO(jr): Explain this method whose logic is very complicated
      */
     virtual std::vector<LogicalRange> divideLogicalRange(const std::string& start_key, size_t len, const std::string& end_key) const = 0;
 
 protected:
-    virtual void printAllPhysicalRanges() const = 0;
-
-    virtual void printAllLogicalRanges() const = 0;
-
     friend class SliceVecRangeCacheIterator;
 
     LogicalRangesView ranges_view;

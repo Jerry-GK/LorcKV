@@ -1694,13 +1694,15 @@ struct Options : public DBOptions, public ColumnFamilyOptions {
 // the block cache. It will not page in data from the OS cache or data that
 // resides in storage.
 enum ReadTier {
-  kReadAllTier = 0x0,     // data in memtable, block cache, OS cache or storage
+  kReadAllTier = 0x0,     // data in memtable, block cache, OS cache or storage (excluding range cache)
   kBlockCacheTier = 0x1,  // data in memtable or block cache
   kPersistedTier = 0x2,   // persisted data.  When WAL is disabled, this option
                           // will skip data in memtable.
                           // Note that this ReadTier currently only supports
                           // Get and MultiGet and does not support iterators.
-  kMemtableTier = 0x3     // data in memtable. used for memtable-only iterators.
+  kMemtableTier = 0x3,    // data in memtable. used for memtable-only iterators.
+  kMemtableAndRangeCacheTier = 0x4,   // data in memtable and range cache
+  kWithRangeCacheTier = 0x5  // kReadAllTier + range cache
 };
 
 // Options that control read operations
@@ -1746,7 +1748,7 @@ struct ReadOptions {
   // Specify if this read request should process data that ALREADY
   // resides on a particular cache. If the required data is not
   // found at the specified cache, then Status::Incomplete is returned.
-  ReadTier read_tier = kReadAllTier;
+  mutable ReadTier read_tier = kReadAllTier;
 
   // For file reads associated with this option, charge the internal rate
   // limiter (see `DBOptions::rate_limiter`) at the specified priority. The

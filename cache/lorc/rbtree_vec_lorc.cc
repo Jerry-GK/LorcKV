@@ -58,7 +58,7 @@ void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
                 SliceVecRange nonOverlappingSubRange = newRefRange.dumpSubRange(lastStartKey, it->startUserKey(), leftIncluded, false);
                 if (nonOverlappingSubRange.isValid() && nonOverlappingSubRange.length() > 0) {
                     // put into logical ranges view with right concation, with left concation if not leftIncluded
-                    this->ranges_view.putRange(LogicalRange(nonOverlappingSubRange.startUserKey().ToString(), nonOverlappingSubRange.endUserKey().ToString(), nonOverlappingSubRange.length(), true), !leftIncluded, true);
+                    this->ranges_view.putRange(LogicalRange(nonOverlappingSubRange.startUserKey().ToString(), nonOverlappingSubRange.endUserKey().ToString(), nonOverlappingSubRange.length(), true, true, true), !leftIncluded, true);
                     mergedRanges.emplace_back(std::move(nonOverlappingSubRange));
                 }
             }
@@ -89,7 +89,7 @@ void RBTreeSliceVecRangeCache::putRange(ReferringSliceVecRange&& newRefRange) {
         SliceVecRange nonOverlappingSubRange = newRefRange.dumpSubRange(lastStartKey, newRefRange.endKey(), leftIncluded, true);
         if (nonOverlappingSubRange.isValid() && nonOverlappingSubRange.length() > 0) {
             // put into logical ranges view with left concation if not leftIncluded
-            this->ranges_view.putRange(LogicalRange(nonOverlappingSubRange.startUserKey().ToString(), nonOverlappingSubRange.endUserKey().ToString(), nonOverlappingSubRange.length(), true), !leftIncluded, false);
+            this->ranges_view.putRange(LogicalRange(nonOverlappingSubRange.startUserKey().ToString(), nonOverlappingSubRange.endUserKey().ToString(), nonOverlappingSubRange.length(), true, true, true), !leftIncluded, false);
             mergedRanges.emplace_back(std::move(nonOverlappingSubRange));
         }
     }
@@ -217,7 +217,7 @@ void RBTreeSliceVecRangeCache::victim() {
         this->current_size = it->byteSize();
         this->total_range_length = it->length();
         ranges_view.removeRange(victimRangeStartKey);
-        ranges_view.putRange(LogicalRange(it->startUserKey().ToString(), it->endUserKey().ToString(), it->length(), true), false, false);
+        ranges_view.putRange(LogicalRange(it->startUserKey().ToString(), it->endUserKey().ToString(), it->length(), true, true, true), false, false);
     }
 }
 
@@ -240,6 +240,9 @@ SliceVecRangeCacheIterator* RBTreeSliceVecRangeCache::newSliceVecRangeCacheItera
 }
 
 void RBTreeSliceVecRangeCache::printAllPhysicalRanges() const {
+    if (!logger.isEnabled()) {
+        return;
+    }
     logger.debug("All physical ranges in RBTreeSliceVecRangeCache:");
     for (auto it = orderedRanges.begin(); it != orderedRanges.end(); ++it) {
         logger.debug("SliceVecRange: " + it->toString());
@@ -250,6 +253,9 @@ void RBTreeSliceVecRangeCache::printAllPhysicalRanges() const {
 }
 
 void RBTreeSliceVecRangeCache::printAllLogicalRanges() const {
+    if (!logger.isEnabled()) {
+        return;
+    }
     logger.debug("All logical ranges in RBTreeSliceVecRangeCache:");
     auto logical_ranges = this->ranges_view.getLogicalRanges();
     size_t total_len = 0;
@@ -263,6 +269,9 @@ void RBTreeSliceVecRangeCache::printAllLogicalRanges() const {
 
 void RBTreeSliceVecRangeCache::printAllRangesWithKeys() const {
     std::shared_lock<std::shared_mutex> lock(cache_mutex_); // Acquire shared lock for reading
+    if (!logger.isEnabled()) {
+        return;
+    }
 
     logger.debug("----------------------------------------");
     this->printAllLogicalRanges();
@@ -295,14 +304,12 @@ std::vector<LogicalRange> RBTreeSliceVecRangeCache::divideLogicalRange(const std
     
     // Calculate actual end position
     std::string actual_end_key = end_key;
-    size_t result_length = 0;
     bool has_length_limit = (len > 0);
     bool has_end_key_limit = !end_key.empty();
     
     // If there's a length limit but no end key, we need to estimate the end position based on cached data
     // Here we simplify the handling and let the caller determine the end position through actual scanning
     
-    size_t remaining_length = len;
     std::string last_processed_key = current_key;
     
     // Iterate through all logical ranges to find overlapping parts with the query range
@@ -322,7 +329,7 @@ std::vector<LogicalRange> RBTreeSliceVecRangeCache::divideLogicalRange(const std
             
             // Only add the gap if it's meaningful (i.e., current_key < gap_end)
             if (current_key < gap_end) {
-                result.emplace_back(current_key, gap_end, 0, false);
+                result.emplace_back(current_key, gap_end, 0, false, result.empty(), false);
                 current_key = gap_end;
             }
             
@@ -345,24 +352,13 @@ std::vector<LogicalRange> RBTreeSliceVecRangeCache::divideLogicalRange(const std
             
             // Only add if the overlapping part is meaningful
             if (overlap_start < overlap_end) {
-                // Calculate the length in cache (simplified to use the original range length)
-                size_t cached_length = range.length();
-                
                 // If the overlap is not the complete range, the length might need adjustment
                 // Here we simplify and use the original length
-                size_t range_length = cached_length;
-                if (has_length_limit && len - result_length <= cached_length) {
-                    range_length = len - result_length;
-                }
-                result.emplace_back(overlap_start, overlap_end, range_length, true);
-                result_length += range_length;
+                result.emplace_back(overlap_start, overlap_end, 0, true, true, true);
                 current_key = overlap_end;
             }
             
             // If we have a length limit and reached it, stop processing
-            if (has_length_limit && result_length >= len) {
-                break;
-            }
             // If we've reached the end key, stop processing
             if (has_end_key_limit && current_key >= actual_end_key) {
                 break;
@@ -371,10 +367,10 @@ std::vector<LogicalRange> RBTreeSliceVecRangeCache::divideLogicalRange(const std
     }
     
     // Handle the final gap that might exist
-    if ((!has_end_key_limit || current_key < actual_end_key) && (!has_length_limit || result_length < len)) {
+    if ((!has_end_key_limit || current_key < actual_end_key)) {
         // If there's no end key limit, or we haven't reached the end key, add the final gap
         std::string final_end = has_end_key_limit ? actual_end_key : "";
-        result.emplace_back(current_key, final_end, 0, false);
+        result.emplace_back(current_key, final_end, 0, false, result.empty(), true);
     }
     
     return result;

@@ -13,7 +13,7 @@
 #include <alloca.h>
 #endif
 
-// #include <iostream>
+#include <iostream>
 #include <cinttypes>
 #include <cstdio>
 #include <map>
@@ -2096,15 +2096,16 @@ InternalIterator* DBImpl::NewInternalIterator(
   }
 
   // Range cache iterator between immutable memtables and L0
-  if (s.ok() && super_version->range_cache != nullptr) {
+  if (s.ok() && super_version->range_cache != nullptr 
+      && (read_options.read_tier == kMemtableAndRangeCacheTier || read_options.read_tier == kWithRangeCacheTier)) {
     SliceVecRangeCacheIterator* range_cache_iter = super_version->range_cache->newSliceVecRangeCacheIterator(arena);
     merge_iter_builder.AddIterator(range_cache_iter);
   }
 
   TEST_SYNC_POINT_CALLBACK("DBImpl::NewInternalIterator:StatusCallback", &s);
   if (s.ok()) {
-    // Collect iterators for files in L0 - Ln
-    if (read_options.read_tier != kMemtableTier) {
+    // Collect iterators for files in L0 - Ln (if not scan with range cache)
+  if (read_options.read_tier != kMemtableTier && read_options.read_tier != kMemtableAndRangeCacheTier) {
       super_version->current->AddIterators(read_options, file_options_,
                                            &merge_iter_builder,
                                            allow_unprepared_value);
@@ -2310,7 +2311,8 @@ Status DBImpl::ScanImpl(const ReadOptions& _read_options,
                         std::vector<std::string>* keys,
                         std::vector<std::string>* values) {
   // TODO(jr): use scan_impl_options as parameter 
-
+  auto lorc = column_family->GetRangeCache();
+  _read_options.read_tier = kReadAllTier; // force read all tier for scan (may be reset internally)
   // return ScanWithIteratorInternal(_read_options, column_family, start_key, end_key, len, keys, values);
   return ScanWithPredivisionInternal(_read_options, column_family, start_key, end_key, len, keys, values);
 }
@@ -2335,76 +2337,87 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
   // std::cout << "Divided logical ranges: " << std::endl;
   // for (const LogicalRange& range : divided_logical_ranges) {
   //   std::cout << "  [" << range.startUserKey() << " -> " << range.endUserKey() << "], len = " << range.length() 
-  //             << ", inRangeCache = " << range.isInRangeCache() << std::endl;
+  //             << ", inRangeCache = " << range.isInRangeCache()
+  //             << ", leftIncluded = " << range.isLeftIncluded()
+  //             << ", rightIncluded = " << range.isRightIncluded() << std::endl;
   // }
+
+  const Snapshot* snapshot = _read_options.snapshot ? _read_options.snapshot : this->GetSnapshot();  
+  ReferringSliceVecRange ref_slice_vec_range(true, snapshot->GetSequenceNumber());
+  if (len != 0) {
+    keys->reserve(len);
+    values->reserve(len);
+    if (lorc) {
+      ref_slice_vec_range.reserve(len);
+    }
+  }
 
   size_t count = 0;
   bool terminated = false;
   for (LogicalRange& range : divided_logical_ranges) {
+    std::cout << "Itering on range: [" 
+              << range.startUserKey() << " -> " 
+              << range.endUserKey() << "], len = " 
+              << range.length() << ", inRangeCache = " 
+              << range.isInRangeCache() << std::endl;
+    size_t range_count = 0;
     if (terminated) {
       break;  // already terminated by len or end_key
     }
-    if (range.isInRangeCache()) {
-      // scan in range cache directly
-      SliceVecRangeCacheIterator* range_cache_iter = lorc->newSliceVecRangeCacheIterator(nullptr);
-      range_cache_iter->Seek(range.startUserKey());
-      for (; range_cache_iter->Valid(); range_cache_iter->Next()) {
-        keys->emplace_back(range_cache_iter->userKey().ToString());
-        values->emplace_back(range_cache_iter->value().ToString());
-        count++;
-        if (len !=0 && count >= len) {
-          terminated = true;
-          break;  // terminate by len
-        }
-        if (!end_key.empty() && range_cache_iter->key() >= end_key) {
-          terminated = true;
-          break;  // terminate by end_key
-        }
-      }
+    std::string range_start_key = range.startUserKey();
+    std::string range_end_key = range.endUserKey();
+    bool in_range_cache = range.isInRangeCache();
+    if (in_range_cache) {
+      _read_options.read_tier = kMemtableAndRangeCacheTier; // scan with memtable and range cache without iter on SSTs on hit ranges
     } else {
-      // scan with level iterators
-      const Snapshot* snapshot = _read_options.snapshot ? _read_options.snapshot : this->GetSnapshot();
-      ReferringSliceVecRange ref_slice_vec_range(true, snapshot->GetSequenceNumber());
-
-      std::string range_start_key = range.startUserKey();
-      Iterator* it = this->NewIterator(_read_options, column_family);
-      if (range_start_key.empty()) {
-        it->SeekToFirst();
-      } else {
-        it->Seek(range_start_key);
-      }
-
-      if (len != 0) {
-        keys->reserve(range.length());
-        values->reserve(range.length());
-        if (lorc) {
-          ref_slice_vec_range.reserve(range.length());
-        }
-      }
-
-      for (; it->Valid(); it->Next()) {
-        keys->emplace_back(it->key().ToString());
-        values->emplace_back(it->value().ToString());
-        if (lorc) {
-          ref_slice_vec_range.emplace(Slice(keys->back()), Slice(values->back()));
-        }
-
-        count++;
-        if (len !=0 && count >= len) {
-          terminated = true;
-          break;  // terminate by len
-        }
-        if (!end_key.empty() && it->key() >= end_key) {
-          terminated = true;
-          break;  // terminate by end_key
-        }
-      }
-
-      if (lorc) {
-        // try to put non-hit ranges to range cache
-        lorc->putRange(std::move(ref_slice_vec_range));
+      _read_options.read_tier = kReadAllTier;
+    }
+    Iterator* it = this->NewIterator(_read_options, column_family);
+    if (range_start_key.empty()) {
+      it->SeekToFirst();
+    } else {
+      it->Seek(Slice(range_start_key));
+      if (it->Valid() && it->key() != Slice(range_start_key)) {
+        assert(false);
       }
     }
+
+    for (; it->Valid(); it->Next()) {
+      if (!range.isLeftIncluded() && !range_start_key.empty() && it->key() == Slice(range_start_key)) {
+        it->Next();
+      }
+      if (!range.isRightIncluded() && !range_end_key.empty() && it->key() == Slice(range_end_key)) {
+        break;
+      }
+      if (!range_end_key.empty() && it->key() > range_end_key) {
+        break;
+      }
+
+      keys->emplace_back(it->key().ToString());
+      values->emplace_back(it->value().ToString());
+      if (lorc) {
+        ref_slice_vec_range.emplace(Slice(keys->back()), Slice(values->back()));
+      }
+
+      count++;
+      range_count++;
+      if (len !=0 && count >= len) {
+        terminated = true;
+        break;  // terminate by len
+      }
+      if (!end_key.empty() && it->key() >= end_key) {
+        terminated = true;
+        break;  // terminate by end_key
+      }
+    }
+  }
+
+  if (len != 0) {
+    assert(ref_slice_vec_range.length() == len);
+  }
+  if (lorc) {
+    // try to put non-hit ranges to range cache
+    lorc->putRange(std::move(ref_slice_vec_range));
   }
   
   return Status();
@@ -2419,6 +2432,9 @@ Status DBImpl::ScanWithIteratorInternal(const ReadOptions& _read_options,
                         std::vector<std::string>* values) {
   // using range cache if needed
   auto lorc = column_family->GetRangeCache();
+  if (lorc) {
+    _read_options.read_tier = kWithRangeCacheTier; // iterator merges all levels including range cache
+  }
   const Snapshot* snapshot = _read_options.snapshot ? _read_options.snapshot : this->GetSnapshot();
   ReferringSliceVecRange ref_slice_vec_range(true, snapshot->GetSequenceNumber());
   // ReferringSliceVecRange ref_slice_vec_range(true, kMaxSequenceNumber);

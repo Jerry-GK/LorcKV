@@ -55,20 +55,22 @@ void RBTreeSliceVecRangeCacheIterator::SeekToLast() {
     valid = true;
 }
 
-void RBTreeSliceVecRangeCacheIterator::Seek(const Slice& target) {
+void RBTreeSliceVecRangeCacheIterator::Seek(const Slice& target_internal_key) {
     std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
     if (!cache) {
         valid = false;
         return;
     }
-    SliceVecRange temp_range(target);
+    assert(target_internal_key.size() > SliceVecRange::internal_key_extra_bytes);
+    Slice target_user_key = Slice(target_internal_key.data(), target_internal_key.size() - SliceVecRange::internal_key_extra_bytes);
+    SliceVecRange temp_range(target_user_key);
     current_range = cache->orderedRanges.upper_bound(temp_range); // startKey > target
     if (current_range != cache->orderedRanges.begin()) {
         --current_range;
     }
     
     if (current_range != cache->orderedRanges.end()) {
-        current_index = current_range->find(target);
+        current_index = current_range->find(target_user_key);
         if (current_index == -1) {
             ++current_range;
             current_index = 0;
@@ -83,20 +85,22 @@ void RBTreeSliceVecRangeCacheIterator::Seek(const Slice& target) {
     }
 }
 
-void RBTreeSliceVecRangeCacheIterator::SeekForPrev(const Slice& target) {
+void RBTreeSliceVecRangeCacheIterator::SeekForPrev(const Slice& target_internal_key) {
     std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
     if (!cache) {
         valid = false;
         return;
     }
-    SliceVecRange temp_range(target);
+    assert(target_internal_key.size() > SliceVecRange::internal_key_extra_bytes);
+    Slice target_user_key = Slice(target_internal_key.data(), target_internal_key.size() - SliceVecRange::internal_key_extra_bytes);
+    SliceVecRange temp_range(target_user_key);
     current_range = cache->orderedRanges.upper_bound(temp_range);
     if (current_range != cache->orderedRanges.begin()) {
         --current_range;
     }
     
-    if (current_range != cache->orderedRanges.end() && current_range->endUserKey() >= target) {
-        current_index = current_range->find(target);
+    if (current_range != cache->orderedRanges.end() && current_range->endUserKey() >= target_user_key) {
+        current_index = current_range->find(target_user_key);
         if (current_index == -1) {
             current_index = current_range->length() - 1;
         }
