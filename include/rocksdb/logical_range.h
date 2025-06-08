@@ -74,7 +74,7 @@ private:
 public:
     LogicalRangesView() = default;
 
-    void putRange(const LogicalRange& range, bool left_concat, bool right_concat) {
+    void putLogicalRange(const LogicalRange range, bool left_concat, bool right_concat) {
         auto it = std::lower_bound(logical_ranges.begin(), logical_ranges.end(), range,
                                   [](const LogicalRange& a, const LogicalRange& b) {
                                       return a.startUserKey() < b.startUserKey();
@@ -126,6 +126,10 @@ public:
         }
         
         logical_ranges.insert(logical_ranges.begin() + insert_pos, merged_range);
+
+        if (insert_pos > 0 && logical_ranges[insert_pos - 1].endUserKey() >= merged_range.startUserKey()) {
+            assert(false);
+        }
     }
 
     void removeRange(const std::string& startUserKey) {

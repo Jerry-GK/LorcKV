@@ -13,7 +13,6 @@
 #include <alloca.h>
 #endif
 
-#include <iostream>
 #include <cinttypes>
 #include <cstdio>
 #include <map>
@@ -2331,39 +2330,24 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
   
   // TODO(jr): Add comments to explain this method whose logic is very complicated
   std::vector<LogicalRange> divided_logical_ranges = lorc->divideLogicalRange(start_key.ToString(), len, end_key.ToString());
-  // std::cout << "Scan Range: start_key = " << start_key.ToString()
-  //           << ", end_key = " << end_key.ToString()
-  //           << ", len = " << len << std::endl;
-  // std::cout << "Divided logical ranges: " << std::endl;
-  // for (const LogicalRange& range : divided_logical_ranges) {
-  //   std::cout << "  [" << range.startUserKey() << " -> " << range.endUserKey() << "], len = " << range.length() 
-  //             << ", inRangeCache = " << range.isInRangeCache()
-  //             << ", leftIncluded = " << range.isLeftIncluded()
-  //             << ", rightIncluded = " << range.isRightIncluded() << std::endl;
-  // }
+  lorc->printAllLogicalRanges();
 
-  const Snapshot* snapshot = _read_options.snapshot ? _read_options.snapshot : this->GetSnapshot();  
-  ReferringSliceVecRange ref_slice_vec_range(true, snapshot->GetSequenceNumber());
+  const Snapshot* snapshot = _read_options.snapshot ? _read_options.snapshot : this->GetSnapshot();
+  SequenceNumber seq_num = snapshot->GetSequenceNumber();
+
   if (len != 0) {
     keys->reserve(len);
     values->reserve(len);
-    if (lorc) {
-      ref_slice_vec_range.reserve(len);
-    }
   }
 
   size_t count = 0;
   bool terminated = false;
   for (LogicalRange& range : divided_logical_ranges) {
-    std::cout << "Itering on range: [" 
-              << range.startUserKey() << " -> " 
-              << range.endUserKey() << "], len = " 
-              << range.length() << ", inRangeCache = " 
-              << range.isInRangeCache() << std::endl;
     size_t range_count = 0;
     if (terminated) {
       break;  // already terminated by len or end_key
     }
+
     std::string range_start_key = range.startUserKey();
     std::string range_end_key = range.endUserKey();
     bool in_range_cache = range.isInRangeCache();
@@ -2382,11 +2366,14 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
       }
     }
 
+    SliceVecRange new_range(true);  // TODO(jr): figure out how to reserve for new_range
+    bool concatRightRangeInCache = false; // indicates that the right range of the current range should be concatenated with ranges in range cache
     for (; it->Valid(); it->Next()) {
       if (!range.isLeftIncluded() && !range_start_key.empty() && it->key() == Slice(range_start_key)) {
         it->Next();
       }
       if (!range.isRightIncluded() && !range_end_key.empty() && it->key() == Slice(range_end_key)) {
+        concatRightRangeInCache = true;
         break;
       }
       if (!range_end_key.empty() && it->key() > range_end_key) {
@@ -2395,8 +2382,11 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
 
       keys->emplace_back(it->key().ToString());
       values->emplace_back(it->value().ToString());
-      if (lorc) {
-        ref_slice_vec_range.emplace(Slice(keys->back()), Slice(values->back()));
+      if (lorc && !in_range_cache) {
+        // fill the gap range (with an extra copy for each key-value pair)
+        // use kTypeRangeCacheValue as the value type for internal keys of range cache
+        std::string internal_key_str = InternalKey(it->key(), seq_num, kTypeRangeCacheValue).Encode().ToString();
+        new_range.emplace(Slice(internal_key_str), Slice(it->value()));
       }
 
       count++;
@@ -2410,14 +2400,21 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
         break;  // terminate by end_key
       }
     }
+
+    if (lorc && !in_range_cache) {
+      // try to put non-hit range to range cache
+      if (new_range.isValid() && new_range.length() > 0) {
+        // not included in non-hit ranges indicates that the range should be concatenated with ranges in range cache on the corresponding side
+        lorc->putActualGapRange(std::move(new_range), !range.isLeftIncluded(), concatRightRangeInCache, false, "", "");
+      } else if (new_range.isValid() && new_range.length() == 0 && !range.isLeftIncluded() && concatRightRangeInCache) {
+        // put the empty gap to concat adjacent ranges in range cache
+        lorc->putActualGapRange(std::move(new_range), true, true, true, range_start_key, range_end_key);
+      }
+    }
   }
 
-  if (len != 0) {
-    assert(ref_slice_vec_range.length() == len);
-  }
   if (lorc) {
-    // try to put non-hit ranges to range cache
-    lorc->putRange(std::move(ref_slice_vec_range));
+    lorc->tryVictim();
   }
   
   return Status();
@@ -2473,7 +2470,7 @@ Status DBImpl::ScanWithIteratorInternal(const ReadOptions& _read_options,
 
   if (lorc) {
     // try to put non-hit ranges to range cache
-    lorc->putRange(std::move(ref_slice_vec_range));
+    lorc->putOverlappingRefRange(std::move(ref_slice_vec_range));
   }
   return Status();
 }

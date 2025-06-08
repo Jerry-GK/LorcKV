@@ -22,9 +22,11 @@ public:
     RBTreeSliceVecRangeCache(size_t capacity, bool enable_logger_ = false);
     ~RBTreeSliceVecRangeCache() override;
 
-    void putRange(ReferringSliceVecRange&& newRefRange) override;
+    void putOverlappingRefRange(ReferringSliceVecRange&& newRefRange) override;
+    void putActualGapRange(SliceVecRange&& newRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) override;
     bool updateEntry(const Slice& key, const Slice& value) override;
     void victim() override;
+    void tryVictim() override;
     
     SliceVecRangeCacheIterator* newSliceVecRangeCacheIterator(Arena* arena) const override;
 

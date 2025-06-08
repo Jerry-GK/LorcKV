@@ -231,7 +231,7 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
     duration<double> putRange_time{0};
     if (enable_lorc) {
         auto putRange_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
-        options.range_cache->putRange(std::move(ref_slice_vec_range)); 
+        options.range_cache->putOverlappingRefRange(std::move(ref_slice_vec_range)); 
         if (enable_timer) {
             auto putRange_end = high_resolution_clock::now();
             putRange_time = duration_cast<duration<double>>(putRange_end - putRange_start);

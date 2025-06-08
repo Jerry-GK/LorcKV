@@ -217,7 +217,7 @@ SliceVecRange ReferringSliceVecRange::dumpSubRange(const Slice& startKey, const 
     for (int i = start_pos; i <= end_pos; i++) {
         // use kTypeRangeCacheValue as the value type for internal keys of range cache
         std::string internal_key_str = InternalKey(keyAt(i), seq_num, kTypeRangeCacheValue).Encode().ToString();
-        result.emplace(std::move(internal_key_str), valueAt(i));
+        result.emplace(Slice(internal_key_str), valueAt(i));
     }
     
     return result;
