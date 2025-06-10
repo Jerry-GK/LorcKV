@@ -15,20 +15,20 @@ using namespace rocksdb;
 using namespace chrono;
 
 #define KEY_LEN 24
-#define VALUE_LEN 4096
+#define VALUE_LEN 1024
 
-bool do_create = false;
-bool do_scan = true;
+bool do_create = true;
+bool do_scan = false;
 bool do_get = false;
 bool do_update = false;
 
-bool enable_blob = true;
-bool enable_blob_cache = false;
-bool enable_lorc = true;
+bool enable_blob = false;
+bool enable_blob_cache = true;
+bool enable_lorc = false;
 bool enable_timer = true;
 
-const int start_key = 100000; // Start key for range
-const int end_key = 999999;   // End key for range
+const int start_key = 1000000; // Start key for range
+const int end_key = 4999999;   // End key for range
 const int total_len = end_key - start_key + 1;
 const int max_range_query_len = total_len * 0.01; // 1% of total length
 const int min_range_query_len = total_len * 0.01;

@@ -9,6 +9,7 @@ import numpy as np
 with_update = True
 enable_dio = True
 drop_outliers = False
+enable_terarkdb = True  # Control whether to plot TerarkDB curve
 
 # Generate file paths based on with_update variable
 update_suffix = "_update" if with_update else "_noupdate"
@@ -18,13 +19,18 @@ rocksdb_lorc_csv_path = f'./csv/scan_performance_rocksdb_lorc{update_suffix}{dio
 rocksdb_blockcache_csv_path = f'./csv/scan_performance_rocksdb_blockcache{update_suffix}{dio_suffix}.csv' # Corrected path
 blobdb_lorc_csv_path = f'./csv/scan_performance_blobdb_lorc{update_suffix}{dio_suffix}.csv'
 blobdb_blobcache_csv_path = f'./csv/scan_performance_blobdb_blobcache{update_suffix}{dio_suffix}.csv'
-output_image_path = f'./scan_performance_comparison{update_suffix}{dio_suffix}{outliers_suffix}.png'
+terarkdb_blockcache_csv_path = './csv/scan_performance_terarkdb_blockcache_update_dio.csv'  # Fixed path for TerarkDB
+output_image_path = f'./fig/scan_performance_comparison{update_suffix}{dio_suffix}{outliers_suffix}.png'
 
 # Read CSV files
 df_rlorc_orig = pd.read_csv(rocksdb_lorc_csv_path)
 df_rbc_orig = pd.read_csv(rocksdb_blockcache_csv_path)
 df_blorc_orig = pd.read_csv(blobdb_lorc_csv_path)
 df_bbc_orig = pd.read_csv(blobdb_blobcache_csv_path)
+
+# Read TerarkDB CSV file if enabled
+if enable_terarkdb:
+    df_tbc_orig = pd.read_csv(terarkdb_blockcache_csv_path)
 
 # --- Initial Data analysis for Outlier Detection (on original data) ---
 # RocksDB Lorc
@@ -55,6 +61,14 @@ threshold_bbc = mean_bbc_orig + 2 * std_bbc_orig
 outliers_bbc_indices = df_bbc_orig[df_bbc_orig['ScanTime(s)'] > threshold_bbc].index
 num_outliers_bbc = len(outliers_bbc_indices)
 
+# TerarkDB BlockCache
+if enable_terarkdb:
+    mean_tbc_orig = df_tbc_orig['ScanTime(s)'].mean()
+    std_tbc_orig = df_tbc_orig['ScanTime(s)'].std()
+    threshold_tbc = mean_tbc_orig + 2 * std_tbc_orig
+    outliers_tbc_indices = df_tbc_orig[df_tbc_orig['ScanTime(s)'] > threshold_tbc].index
+    num_outliers_tbc = len(outliers_tbc_indices)
+
 
 # --- Conditionally Drop Outliers ---
 if drop_outliers:
@@ -62,6 +76,9 @@ if drop_outliers:
     df_rbc = df_rbc_orig.drop(outliers_rbc_indices)
     df_blorc = df_blorc_orig.drop(outliers_blorc_indices)
     df_bbc = df_bbc_orig.drop(outliers_bbc_indices)
+    if enable_terarkdb:
+        df_tbc = df_tbc_orig.drop(outliers_tbc_indices)
+        outliers_tbc_plot = pd.DataFrame()
     outliers_rlorc_plot = pd.DataFrame()
     outliers_rbc_plot = pd.DataFrame()
     outliers_blorc_plot = pd.DataFrame()
@@ -71,6 +88,9 @@ else:
     df_rbc = df_rbc_orig.copy()
     df_blorc = df_blorc_orig.copy()
     df_bbc = df_bbc_orig.copy()
+    if enable_terarkdb:
+        df_tbc = df_tbc_orig.copy()
+        outliers_tbc_plot = df_tbc_orig.loc[outliers_tbc_indices]
     outliers_rlorc_plot = df_rlorc_orig.loc[outliers_rlorc_indices]
     outliers_rbc_plot = df_rbc_orig.loc[outliers_rbc_indices]
     outliers_blorc_plot = df_blorc_orig.loc[outliers_blorc_indices]
@@ -86,6 +106,10 @@ std_blorc = df_blorc['ScanTime(s)'].std()
 mean_bbc = df_bbc['ScanTime(s)'].mean()
 std_bbc = df_bbc['ScanTime(s)'].std()
 
+if enable_terarkdb:
+    mean_tbc = df_tbc['ScanTime(s)'].mean()
+    std_tbc = df_tbc['ScanTime(s)'].std()
+
 # Create figure with subplots
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 12), gridspec_kw={'height_ratios': [2, 1]})
 
@@ -98,6 +122,11 @@ ax1.plot(df_bbc['Query'], df_bbc['ScanTime(s)'], linestyle='-',
          color='darkblue', linewidth=0.8, label='BlobDB BlobCache')
 ax1.plot(df_blorc['Query'], df_blorc['ScanTime(s)'], linestyle='-',
          color='lightblue', linewidth=0.8, label='BlobDB Lorc')
+
+# Add TerarkDB curve if enabled
+if enable_terarkdb:
+    ax1.plot(df_tbc['Query'], df_tbc['ScanTime(s)'], linestyle='-',
+             color='purple', linewidth=0.8, label='TerarkDB BlockCache')
 ax1.set_ylabel('Scan Time (seconds) - Log Scale')
 ax1.set_xlabel('Operation Number')
 ax1.set_title('Scan Performance Comparison (20%Write + 80%Scan, Enough Memory)')
@@ -118,6 +147,9 @@ if not drop_outliers and not outliers_blorc_plot.empty:
 if not drop_outliers and not outliers_bbc_plot.empty:
     ax1.scatter(outliers_bbc_plot['Query'], outliers_bbc_plot['ScanTime(s)'],
                 color='deeppink', s=50, label=f'BlobDB BlobCache Outliers (>{threshold_bbc:.2f}s)')
+if enable_terarkdb and not drop_outliers and not outliers_tbc_plot.empty:
+    ax1.scatter(outliers_tbc_plot['Query'], outliers_tbc_plot['ScanTime(s)'],
+                color='magenta', s=50, label=f'TerarkDB BlockCache Outliers (>{threshold_tbc:.2f}s)')
 ax1.legend()
 
 # Plot 2: Regular plot with outliers marked
@@ -129,6 +161,11 @@ ax2.plot(df_bbc['Query'], df_bbc['ScanTime(s)'], linestyle='-',
          color='darkblue', linewidth=0.8, label='BlobDB BlobCache')
 ax2.plot(df_blorc['Query'], df_blorc['ScanTime(s)'], linestyle='-',
          color='lightblue', linewidth=0.8, label='BlobDB Lorc')
+
+# Add TerarkDB curve if enabled
+if enable_terarkdb:
+    ax2.plot(df_tbc['Query'], df_tbc['ScanTime(s)'], linestyle='-',
+             color='purple', linewidth=0.8, label='TerarkDB BlockCache')
 ax2.set_ylabel('Scan Time (seconds)')
 ax2.set_xlabel('Operation Number')
 ax2.set_title('Scan Performance Comparison (Regular Scale)')
@@ -148,6 +185,9 @@ if not drop_outliers and not outliers_blorc_plot.empty:
 if not drop_outliers and not outliers_bbc_plot.empty:
     ax2.scatter(outliers_bbc_plot['Query'], outliers_bbc_plot['ScanTime(s)'],
                 color='deeppink', s=50, label=f'BlobDB BlobCache Outliers (>{threshold_bbc:.2f}s)')
+if enable_terarkdb and not drop_outliers and not outliers_tbc_plot.empty:
+    ax2.scatter(outliers_tbc_plot['Query'], outliers_tbc_plot['ScanTime(s)'],
+                color='magenta', s=50, label=f'TerarkDB BlockCache Outliers (>{threshold_tbc:.2f}s)')
 ax2.legend()
 
 # Add statistical information as text
@@ -171,12 +211,21 @@ stats_text_bbc = (f"BlobDB BlobCache Stats ({'Outliers Dropped' if drop_outliers
                   f"Min: {df_bbc['ScanTime(s)'].min():.4g}s\nMax: {df_bbc['ScanTime(s)'].max():.4g}s\n"
                   f"Original Outliers: {num_outliers_bbc}")
 
+if enable_terarkdb:
+    stats_text_tbc = (f"TerarkDB BlockCache Stats ({'Outliers Dropped' if drop_outliers else 'Original Data'}):\n"
+                      f"Mean: {mean_tbc:.4g}s\nStd Dev: {std_tbc:.4g}s\n"
+                      f"Min: {df_tbc['ScanTime(s)'].min():.4g}s\nMax: {df_tbc['ScanTime(s)'].max():.4g}s\n"
+                      f"Original Outliers: {num_outliers_tbc}")
+
 # Position the text boxes
 text_props = dict(bbox=dict(facecolor='wheat', alpha=0.5), verticalalignment='top', fontsize=8)
 ax1.text(0.01, 0.98, stats_text_rlorc, transform=ax1.transAxes, **text_props)
 ax1.text(0.01, 0.78, stats_text_rbc, transform=ax1.transAxes, **text_props)
 ax1.text(0.51, 0.98, stats_text_blorc, transform=ax1.transAxes, **text_props) # Adjusted x for right side
 ax1.text(0.51, 0.78, stats_text_bbc, transform=ax1.transAxes, **text_props) # Adjusted x for right side
+
+if enable_terarkdb:
+    ax1.text(0.26, 0.98, stats_text_tbc, transform=ax1.transAxes, **text_props) # Position TerarkDB stats in the middle
 
 
 # Calculate and display performance improvement

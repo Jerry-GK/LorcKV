@@ -2,5 +2,6 @@ bin/
 db/
 profile/
 csv/
+fig/
 *.png
 *.txt

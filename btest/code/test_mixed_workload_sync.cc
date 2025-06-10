@@ -22,7 +22,7 @@ using namespace rocksdb;
 using namespace chrono;
 
 #define KEY_LEN 24
-#define VALUE_LEN 4096
+#define VALUE_LEN 1024
 
 bool direct_io = true; // Use direct IO for reads and writes
 bool enable_blob = true; // Use blobDB. If false, use regular RocksDB of BlockBasedTable
@@ -35,19 +35,24 @@ bool enable_lorc = true;
 
 bool enable_timer = true;
 bool preheat_boundary = true;
+bool preheat_allhot = true;
 
-const int start_key = 100000; // Start key for range
-const int end_key = 999999;   // End key for range
+// const int start_key = 100000; // Start key for range
+// const int end_key = 999999;   // End key for range
+const int start_key = 1000000; // Start key for range
+const int end_key = 4999999;   // End key for range
 const int total_len = end_key - start_key + 1;
-const int max_range_query_len = total_len * 0.01; // 1% of total length
-const int min_range_query_len = total_len * 0.01;
-const int num_range_queries = 2000;
+// const int max_range_query_len = total_len * 0.0001; // 0.01% of total length
+// const int min_range_query_len = total_len * 0.0001;
+const int max_range_query_len = 20;
+const int min_range_query_len = 20;
+const int num_range_queries = 20000;
 
 // double warm_up_ratio = 200.0 / num_range_queries;
 double warm_up_ratio = 0.5;
 double p_update = 0.25;  // 20% update before each scan
-int num_update = ((max_range_query_len + min_range_query_len) / 2) * 0.1;   // num of entries to update of each update
-// int num_update = 1;
+// int num_update = ((max_range_query_len + min_range_query_len) / 2) * 1.0;   // num of entries to update of each update
+int num_update = 16;
 
 double hot_data_precentage = 0.05; // hot data only range with start key >= (end_key - total_len * hot_data_precentage) will be queried
 bool only_update_hot_data = false; // only update hot data, i.e., range with start key >= (end_key - total_len * hot_data_precentage)
@@ -326,7 +331,12 @@ int main() {
             int query_start_key = start_key_dist(gen);
 
             // preheat
-            if (preheat_boundary) {
+            if (preheat_allhot) {  
+                if (i == 0) {
+                    query_start_key = query_key_left_bound;
+                    query_length = end_key - query_start_key + 1; // preheat the whole hot data range
+                }
+            } else if (preheat_boundary) {
                 if (i == 0) {
                     query_start_key = query_key_left_bound; // preheat the left bound
                 }
