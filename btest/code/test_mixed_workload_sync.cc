@@ -157,7 +157,7 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
     std::vector<std::string> keys;
     std::vector<std::string> values;
     
-    Status s = db->Scan(read_options, Slice(scan_start_key), len, &keys, &values);
+    Status s = db->Scan(read_options, db->DefaultColumnFamily(), Slice(scan_start_key), len, &keys, &values);
     assert(s.ok());
     std::cout << "Scan completed. Number of keys scanned: " << keys.size() << std::endl;
     assert(keys.size() == values.size());

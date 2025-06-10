@@ -752,6 +752,43 @@ class DB {
     return Status::NotSupported(
         "Scan(with lorc) interface not supported in this DB implementation. (Only support db_impl)");
   };  
+
+  // terminated by len
+  virtual Status Scan(const ReadOptions& options,
+                      ColumnFamilyHandle* column_family,
+                      const Slice& start_key,
+                      size_t len,
+                      std::vector<std::string>* keys,
+                      std::vector<std::string>* values) {
+    return Scan(options, column_family, start_key, Slice(), len, keys, values);
+  }
+
+  // terminated by end_key
+  virtual Status Scan(const ReadOptions& options,
+                      ColumnFamilyHandle* column_family,
+                      const Slice& start_key,
+                      const Slice& end_key,
+                      std::vector<std::string>* keys,
+                      std::vector<std::string>* values) {
+    return Scan(options, column_family, start_key, end_key, 0, keys, values);
+  }
+
+  // scan to end
+  virtual Status Scan(const ReadOptions& options,
+                      ColumnFamilyHandle* column_family,
+                      const Slice& start_key,
+                      std::vector<std::string>* keys,
+                      std::vector<std::string>* values) {
+    return Scan(options, column_family, start_key, Slice(), 0, keys, values);
+  }
+
+  // scan all
+  virtual Status Scan(const ReadOptions& options,
+                      ColumnFamilyHandle* column_family,
+                      std::vector<std::string>* keys,
+                      std::vector<std::string>* values) {
+    return Scan(options, column_family, Slice(), Slice(), 0, keys, values);
+  }
   
   // terminated by len
   virtual Status Scan(const ReadOptions& options,
