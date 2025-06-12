@@ -34,8 +34,8 @@ bool enable_blob_cache = false;
 bool enable_lorc = true;
 
 bool enable_timer = true;
-bool preheat_boundary = true;
-bool preheat_allhot = true;
+bool warmup_boundary = true;
+bool warmup_allhot = true;
 
 // const int start_key = 100000; // Start key for range
 // const int end_key = 999999;   // End key for range
@@ -330,18 +330,18 @@ int main() {
             std::uniform_int_distribution<> start_key_dist(query_key_left_bound, max_start);
             int query_start_key = start_key_dist(gen);
 
-            // preheat
-            if (preheat_allhot) {  
+            // warmup
+            if (warmup_allhot) {  
                 if (i == 0) {
                     query_start_key = query_key_left_bound;
-                    query_length = end_key - query_start_key + 1; // preheat the whole hot data range
+                    query_length = end_key - query_start_key + 1; // warmup the whole hot data range
                 }
-            } else if (preheat_boundary) {
+            } else if (warmup_boundary) {
                 if (i == 0) {
-                    query_start_key = query_key_left_bound; // preheat the left bound
+                    query_start_key = query_key_left_bound; // warmup the left bound
                 }
                 if (i == 1) {
-                    query_start_key = max_start; // preheat the right bound
+                    query_start_key = max_start; // warmup the right bound
                 }
             }
             

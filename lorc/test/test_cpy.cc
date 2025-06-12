@@ -38,7 +38,7 @@ public:
         }
         
         data = new char[total_size];
-        // preheat
+        // warmup
         memset(data, 0, total_size);
     }
     

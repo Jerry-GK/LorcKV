@@ -41,13 +41,16 @@ if [ "$mode" == "build" ]; then
     # Enter the build directory and run CMake and Make
     cd "$build_dir" || exit 1
     echo "Building..."
+    sudo rm -rf /home/gjr/mylibs/lorcdb_$build_type
     sudo cmake -DWITH_JEMALLOC=0 -DWITH_SNAPPY=1 -DWITH_LZ4=1 -DWITH_ZLIB=1 -DCMAKE_BUILD_TYPE=$cmake_build_type -DWITH_GFLAGS=1 -DWITH_JNI=$with_jni \
+            -DCMAKE_INSTALL_PREFIX=/home/gjr/mylibs/lorcdb_$build_type \
             -DJAVA_HOME=/home/tx/jdk1.8.0_401 \
             -DJAVA_INCLUDE_PATH=/home/tx/jdk1.8.0_401/include \
             -DJAVA_INCLUDE_PATH2=/home/tx/jdk1.8.0_401/include/linux \
             -DJAVA_JVM_LIBRARY=/home/tx/jdk1.8.0_401/jre/lib/amd64/server/libjvm.so \
             ..
     sudo make -j
+    sudo make install
 elif [ "$mode" == "make" ]; then
     # Check if the build directory exists, if not, report an error
     if [ ! -d "$build_dir" ]; then
@@ -56,7 +59,9 @@ elif [ "$mode" == "make" ]; then
     fi
     cd "$build_dir" || exit 1
     echo "Making..."
+    sudo rm -rf /home/gjr/mylibs/lorcdb_$build_type
     sudo make -j
+    sudo make install
 else
     echo "Invalid mode. Please specify 'build' or 'make'."
     exit 1

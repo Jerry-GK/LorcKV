@@ -2330,7 +2330,7 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
   
   // TODO(jr): Add comments to explain this method whose logic is very complicated
   std::vector<LogicalRange> divided_logical_ranges = lorc->divideLogicalRange(start_key.ToString(), len, end_key.ToString());
-  lorc->printAllLogicalRanges();
+  // lorc->printAllLogicalRanges();
 
   const Snapshot* snapshot = _read_options.snapshot ? _read_options.snapshot : this->GetSnapshot();
   SequenceNumber seq_num = snapshot->GetSequenceNumber();
@@ -2371,6 +2371,9 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
     for (; it->Valid(); it->Next()) {
       if (!range.isLeftIncluded() && !range_start_key.empty() && it->key() == Slice(range_start_key)) {
         it->Next();
+        if (!it->Valid()) {
+          break;
+        }
       }
       if (!range.isRightIncluded() && !range_end_key.empty() && it->key() == Slice(range_end_key)) {
         concatRightRangeInCache = true;

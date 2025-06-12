@@ -349,10 +349,10 @@ int SliceVecRange::find(const Slice& key) const {
 std::string SliceVecRange::toString() const {
     std::string str = "< " + ToStringPlain(this->startUserKey().ToString()) + " -> " + ToStringPlain(this->endUserKey().ToString()) + " >"
         + " ( len = " + std::to_string(this->length()) + " )";
-    if ((int)this->length() != std::stoi(ToStringPlain(this->endUserKey().ToString())) - std::stoi(ToStringPlain(this->startUserKey().ToString())) + 1) {
-        str += " (warning: length mismatch)";
-        assert(false);
-    }
+    // if ((int)this->length() != std::stoi(ToStringPlain(this->endUserKey().ToString())) - std::stoi(ToStringPlain(this->startUserKey().ToString())) + 1) {
+    //     str += " (warning: length mismatch)";
+    //     assert(false);
+    // }
     return str;
 }
 

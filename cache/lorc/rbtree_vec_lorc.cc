@@ -123,11 +123,11 @@ void RBTreeSliceVecRangeCache::putOverlappingRefRange(ReferringSliceVecRange&& n
     }
 
     // Debug output: print all ranges in order
-    logger.debug("----------------------------------------");
+    logger.debug("\n----------------------------------------");
     this->printAllLogicalRanges();
     logger.debug("----------------------------------------");
     this->printAllPhysicalRanges();
-    logger.debug("----------------------------------------");
+    logger.debug("----------------------------------------\n");
 
     if (this->enable_statistic) {
         auto end_time = std::chrono::high_resolution_clock::now();
@@ -171,11 +171,11 @@ void RBTreeSliceVecRangeCache::putActualGapRange(SliceVecRange&& newRange, bool 
     // }
 
     // logger
-    logger.debug("----------------------------------------");
+    logger.debug("\n----------------------------------------");
     this->printAllLogicalRanges();
     logger.debug("----------------------------------------");
     this->printAllPhysicalRanges();
-    logger.debug("----------------------------------------");
+    logger.debug("----------------------------------------\n");
 
     if (this->enable_statistic) {
         auto end_time = std::chrono::high_resolution_clock::now();
@@ -331,11 +331,11 @@ void RBTreeSliceVecRangeCache::printAllRangesWithKeys() const {
         return;
     }
 
-    logger.debug("----------------------------------------");
+    logger.debug("\n----------------------------------------");
     this->printAllLogicalRanges();
     logger.debug("----------------------------------------");
     this->printAllPhysicalRanges();
-    logger.debug("----------------------------------------");
+    logger.debug("----------------------------------------\n");
 
     logger.debug("All keys in RBTreeSliceVecRangeCache:");
     for (const auto& range : orderedRanges) {
