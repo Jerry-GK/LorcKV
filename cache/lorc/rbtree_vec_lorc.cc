@@ -126,8 +126,8 @@ void RBTreeSliceVecRangeCache::putOverlappingRefRange(ReferringSliceVecRange&& n
     logger.debug("\n----------------------------------------");
     this->printAllLogicalRanges();
     logger.debug("----------------------------------------");
-    this->printAllPhysicalRanges();
-    logger.debug("----------------------------------------\n");
+    // this->printAllPhysicalRanges();
+    // logger.debug("----------------------------------------\n");
 
     if (this->enable_statistic) {
         auto end_time = std::chrono::high_resolution_clock::now();
@@ -174,8 +174,8 @@ void RBTreeSliceVecRangeCache::putActualGapRange(SliceVecRange&& newRange, bool 
     logger.debug("\n----------------------------------------");
     this->printAllLogicalRanges();
     logger.debug("----------------------------------------");
-    this->printAllPhysicalRanges();
-    logger.debug("----------------------------------------\n");
+    // this->printAllPhysicalRanges();
+    // logger.debug("----------------------------------------\n");
 
     if (this->enable_statistic) {
         auto end_time = std::chrono::high_resolution_clock::now();
@@ -365,9 +365,20 @@ std::vector<LogicalRange> RBTreeSliceVecRangeCache::divideLogicalRange(const Sli
     bool has_length_limit = (len > 0);
     bool has_end_key_limit = !end_key.empty();
     bool terminated = false;
-    
+
+    auto find_first_range = [&logical_ranges](const Slice& key) {
+        auto it = std::lower_bound(logical_ranges.begin(), logical_ranges.end(), key,
+            [](const LogicalRange& range, const Slice& key_) {
+                return range.endUserKey() < key_;
+            });
+        return it;
+    };
+
+    auto range_it = find_first_range(current_key);
+
     // Iterate through all logical ranges to find overlapping parts with the query range
-    for (const auto& range : logical_ranges) {
+    for (; range_it != logical_ranges.end(); ++range_it) {
+        const auto& range = *range_it;
         Slice range_start = range.startUserKey();
         Slice range_end = range.endUserKey();
 
@@ -410,7 +421,8 @@ std::vector<LogicalRange> RBTreeSliceVecRangeCache::divideLogicalRange(const Sli
             
             // Only add if the overlapping part is meaningful
             if (overlap_start <= overlap_end) {
-                size_t range_len = this->getLengthInRangeCache(overlap_start, overlap_end);
+                size_t remaining_length = len - total_length_in_range_cache;
+                size_t range_len = this->getLengthInRangeCache(overlap_start, overlap_end, remaining_length);
                 result.emplace_back(overlap_start.ToString(), overlap_end.ToString(), range_len, true, true, true);
                 total_length_in_range_cache += range_len;
                 current_key = overlap_end;
@@ -440,7 +452,7 @@ std::vector<LogicalRange> RBTreeSliceVecRangeCache::divideLogicalRange(const Sli
     return result;
 }
 
-size_t RBTreeSliceVecRangeCache::getLengthInRangeCache(const Slice& start_key, const Slice& end_key) const {
+size_t RBTreeSliceVecRangeCache::getLengthInRangeCache(const Slice& start_key, const Slice& end_key, size_t remaining_length) const {
     assert(!start_key.empty() && !end_key.empty() && start_key <= end_key);
     
     size_t total_length = 0;
@@ -465,7 +477,6 @@ size_t RBTreeSliceVecRangeCache::getLengthInRangeCache(const Slice& start_key, c
     for (auto it = start_it; it != orderedRanges.end(); ++it) {
         int start_index = 0;
         int end_index = it->length() - 1;
-
         if (it->startUserKey() < start_key && it->endUserKey() >= start_key) {
             start_index = it->find(start_key);
             assert(start_index >= 0);
@@ -485,9 +496,13 @@ size_t RBTreeSliceVecRangeCache::getLengthInRangeCache(const Slice& start_key, c
         if (it == end_it) {
             break;
         }
+        if (total_length >= remaining_length) {
+            // If we have reached the remaining length, stop traversing
+            break;
+        }
     }
-    
-    return total_length;
+
+    return std::min(total_length, remaining_length);
 }
 
 }  // namespace ROCKSDB_NAMESPACE
