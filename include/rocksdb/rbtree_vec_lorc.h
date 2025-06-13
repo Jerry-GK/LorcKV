@@ -41,8 +41,11 @@ public:
 
     void printAllLogicalRanges() const override;
 
-    std::vector<LogicalRange> divideLogicalRange(const std::string& start_key, size_t len, const std::string& end_key) const override;
+    std::vector<LogicalRange> divideLogicalRange(const Slice& start_key, size_t len, const Slice& end_key) const override;
+
 private:
+    size_t getLengthInRangeCache(const Slice& start_key, const Slice& end_key) const;
+
     friend class RBTreeSliceVecRangeCacheIterator;
     std::set<SliceVecRange> orderedRanges;     // Container for ranges sorted by start key
     std::multimap<int, std::string> lengthMap;  // Container for ranges sorted by length (for victim selection)

@@ -32,12 +32,12 @@ public:
         right_included = rightIncluded;
     }
 
-    std::string startUserKey() const {
-        return start_user_key;
+    Slice startUserKey() const {
+        return Slice(start_user_key);
     }
 
-    std::string endUserKey() const {
-        return end_user_key;
+    Slice endUserKey() const {
+        return Slice(end_user_key);
     }
 
     size_t length() const {
@@ -58,8 +58,8 @@ public:
 
     std::string toString() const {
         std::string endUserKeyStr = end_user_key.empty() ? "(undetermined)" : end_user_key;
-        std::string str = "< " + this->startUserKey() + " -> " + endUserKeyStr + " >"
-            + " ( len = " + std::to_string(this->length()) + " )";
+        std::string str = (left_included ? "[ " : "( ") + start_user_key + " -> " + endUserKeyStr + (right_included ? " ]" : " )")
+            + " ( len = " + std::to_string(this->length()) + ", in_range_cache = " + (in_range_cache ? "true" : "false") + " )";
         return str;
     }
 };
@@ -87,12 +87,11 @@ public:
         
         if (left_concat && insert_pos > 0) {
             const auto& left_range = logical_ranges[insert_pos - 1];
-            std::string left_end = left_range.startUserKey();
             
             if (left_range.startUserKey() <= merged_range.startUserKey()) {
                 merged_range = LogicalRange(
-                    left_range.startUserKey(),
-                    merged_range.endUserKey(),
+                    left_range.startUserKey().ToString(),
+                    merged_range.endUserKey().ToString(),
                     left_range.length() + merged_range.length(),
                     true,
                     true,
@@ -108,8 +107,8 @@ public:
             const auto& right_range = logical_ranges[insert_pos];
             if (merged_range.startUserKey() <= right_range.startUserKey()) {
                 merged_range = LogicalRange(
-                    merged_range.startUserKey(),
-                    right_range.endUserKey(),
+                    merged_range.startUserKey().ToString(),
+                    right_range.endUserKey().ToString(),
                     merged_range.length() + right_range.length(),
                     true,
                     true,
@@ -132,7 +131,7 @@ public:
         }
     }
 
-    void removeRange(const std::string& startUserKey) {
+    void removeRange(const Slice& startUserKey) {
         logical_ranges.erase(
             std::remove_if(logical_ranges.begin(), logical_ranges.end(),
                            [&startUserKey](const LogicalRange& range) {

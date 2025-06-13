@@ -226,8 +226,8 @@ void RBTreeSliceVecRangeCache::victim() {
     
     // victimRangeStartKey is the start key of range whose len is the smallest
     // TODO(jr): victim better
-    std::string victimRangeStartKey;
-    std::string victimRangeEndKey;
+    Slice victimRangeStartKey;
+    Slice victimRangeEndKey;
     size_t min_len = 0;
     for (auto& range : ranges_view.getLogicalRanges()) {
         if (range.length() < min_len || min_len == 0) {
@@ -241,8 +241,8 @@ void RBTreeSliceVecRangeCache::victim() {
     // If only one SliceVecRange remains, truncate it to fit capacity
     if (orderedRanges.size() > 1 || this->capacity <= 0) {
         for (auto it = orderedRanges.begin(); it != orderedRanges.end();) {
-            if (it->startUserKey().ToString() >= victimRangeStartKey && 
-                it->endUserKey().ToString() <= victimRangeEndKey) {
+            if (it->startUserKey() >= victimRangeStartKey && 
+                it->endUserKey() <= victimRangeEndKey) {
                 logger.debug("Victim: " + it->toString());
                 this->current_size -= it->byteSize();
                 this->total_range_length -= it->length();
@@ -349,90 +349,145 @@ void RBTreeSliceVecRangeCache::printAllRangesWithKeys() const {
     logger.debug("----------------------------------------");
 }
 
-std::vector<LogicalRange> RBTreeSliceVecRangeCache::divideLogicalRange(const std::string& start_key, size_t len, const std::string& end_key) const {
+std::vector<LogicalRange> RBTreeSliceVecRangeCache::divideLogicalRange(const Slice& start_key, size_t len, const Slice& end_key) const {
     std::shared_lock<std::shared_mutex> lock(cache_mutex_);
     
     std::vector<LogicalRange> result;
+    size_t total_length_in_range_cache = 0;
     
     // Get all logical ranges
     const auto& logical_ranges = ranges_view.getLogicalRanges();
     
     // Handle empty start_key (means start from the beginning)
-    std::string current_key = start_key;
+    Slice current_key = start_key;
     
     // Calculate actual end position
-    std::string actual_end_key = end_key;
     bool has_length_limit = (len > 0);
     bool has_end_key_limit = !end_key.empty();
-    
-    // If there's a length limit but no end key, we need to estimate the end position based on cached data
-    // Here we simplify the handling and let the caller determine the end position through actual scanning
-    
-    std::string last_processed_key = current_key;
+    bool terminated = false;
     
     // Iterate through all logical ranges to find overlapping parts with the query range
     for (const auto& range : logical_ranges) {
-        std::string range_start = range.startUserKey();
-        std::string range_end = range.endUserKey();
-        
+        Slice range_start = range.startUserKey();
+        Slice range_end = range.endUserKey();
+
         // If current key hasn't reached the start of this range, there's a gap
         if (current_key < range_start) {
             // Calculate the end position of the gap
-            std::string gap_end = range_start;
+            Slice gap_end = range_start;
             
             // If there's an end key limit and the gap would exceed it, truncate the gap
-            if (has_end_key_limit && gap_end > actual_end_key) {
-                gap_end = actual_end_key;
-                result.emplace_back(current_key, gap_end, 0, false, result.empty(), true);
+            if (has_end_key_limit && gap_end > end_key) {
+                gap_end = end_key;
+                result.emplace_back(current_key.ToString(), gap_end.ToString(), 0, false, result.empty(), true);
                 current_key = gap_end;
                 break; // last right split
             }
             
             // Only add the gap if it's meaningful (i.e., current_key < gap_end)
             if (current_key < gap_end) {
-                result.emplace_back(current_key, gap_end, 0, false, result.empty(), false);
+                result.emplace_back(current_key.ToString(), gap_end.ToString(), 0, false, result.empty(), false);
                 current_key = gap_end;
             }
-            
+
             // If we've reached the end key, stop processing
-            if (has_end_key_limit && current_key >= actual_end_key) {
+            if (has_end_key_limit && current_key >= end_key) {
+                terminated = true;
                 break;
             }
         }
         
         // Check if current range overlaps with the query range
-        if (current_key <= range_end && (actual_end_key.empty() || range_start < actual_end_key)) {
+        if (current_key <= range_end && (end_key.empty() || range_start < end_key)) {
             // Calculate the start and end of the overlapping part
-            std::string overlap_start = std::max(current_key, range_start);
-            std::string overlap_end = range_end;
+            Slice overlap_start = std::max(current_key, range_start);
+            Slice overlap_end = range_end;
             
             // If there's an end key limit, truncate the overlapping part
-            if (has_end_key_limit && overlap_end > actual_end_key) {
-                overlap_end = actual_end_key;
+            if (has_end_key_limit && overlap_end > end_key) {
+                overlap_end = end_key;
             }
             
             // Only add if the overlapping part is meaningful
             if (overlap_start <= overlap_end) {
-                result.emplace_back(overlap_start, overlap_end, 0, true, true, true);
+                size_t range_len = this->getLengthInRangeCache(overlap_start, overlap_end);
+                result.emplace_back(overlap_start.ToString(), overlap_end.ToString(), range_len, true, true, true);
+                total_length_in_range_cache += range_len;
                 current_key = overlap_end;
             }
             
-            // If we have a length limit and reached it, stop processing
+            // If we have a length limit and the length in range cache reached it, stop processing
+            // We cannot estimate range length of non-hit ranges, so regard it as 0
+            if (has_length_limit && total_length_in_range_cache >= len) {
+                terminated = true;
+                break;
+            }
             // If we've reached the end key, stop processing
-            if (has_end_key_limit && current_key >= actual_end_key) {
+            if (has_end_key_limit && current_key >= end_key) {
+                terminated = true;
                 break;
             }
         }
     }
     
     // Handle the non-hit range that might exist
-    if ((!has_end_key_limit || current_key < actual_end_key)) {
+    if (!terminated) {
         // If there's no end key limit, or we haven't reached the end key, add the final gap
-        std::string final_end = has_end_key_limit ? actual_end_key : "";
-        result.emplace_back(current_key, final_end, 0, false, result.empty(), true);
+        Slice final_end = has_end_key_limit ? end_key : Slice();
+        result.emplace_back(current_key.ToString(), final_end.ToString(), 0, false, result.empty(), true);
     }
     
     return result;
+}
+
+size_t RBTreeSliceVecRangeCache::getLengthInRangeCache(const Slice& start_key, const Slice& end_key) const {
+    assert(!start_key.empty() && !end_key.empty() && start_key <= end_key);
+    
+    size_t total_length = 0;
+    
+    // Find the range that contains or comes after start_key
+    auto start_it = orderedRanges.upper_bound(SliceVecRange(start_key));
+    if (start_it != orderedRanges.begin()) {
+        --start_it;
+        assert(start_it->endUserKey() >= start_key);
+    }
+    
+    // Find the range that contains or comes after end_key
+    auto end_it = orderedRanges.upper_bound(SliceVecRange(end_key));
+    if (end_it != orderedRanges.begin()) {
+        --end_it;
+        assert(end_it->endUserKey() >= end_key);
+    }
+
+    assert(start_it != orderedRanges.end() && end_it != orderedRanges.end() && std::distance(start_it, end_it) >= 0);
+    
+    // Iterate from start_it to calculate total length
+    for (auto it = start_it; it != orderedRanges.end(); ++it) {
+        int start_index = 0;
+        int end_index = it->length() - 1;
+
+        if (it->startUserKey() < start_key && it->endUserKey() >= start_key) {
+            start_index = it->find(start_key);
+            assert(start_index >= 0);
+        }
+
+        if (it->startUserKey() < end_key && it->endUserKey() >= end_key) {
+            end_index = it->find(end_key);
+            assert(end_index >= 0);
+            if (it->userKeyAt(end_index) != end_key) {
+                end_index -= 1;
+            }
+        }
+
+        assert(start_index <= end_index);
+        total_length += (end_index - start_index + 1);
+
+        if (it == end_it) {
+            break;
+        }
+    }
+    
+    return total_length;
 }
 
 }  // namespace ROCKSDB_NAMESPACE

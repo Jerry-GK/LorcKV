@@ -2329,7 +2329,7 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
   }
   
   // TODO(jr): Add comments to explain this method whose logic is very complicated
-  std::vector<LogicalRange> divided_logical_ranges = lorc->divideLogicalRange(start_key.ToString(), len, end_key.ToString());
+  std::vector<LogicalRange> divided_logical_ranges = lorc->divideLogicalRange(start_key, len, end_key);
   // lorc->printAllLogicalRanges();
 
   const Snapshot* snapshot = _read_options.snapshot ? _read_options.snapshot : this->GetSnapshot();
@@ -2348,8 +2348,8 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
       break;  // already terminated by len or end_key
     }
 
-    std::string range_start_key = range.startUserKey();
-    std::string range_end_key = range.endUserKey();
+    Slice range_start_key = range.startUserKey();
+    Slice range_end_key = range.endUserKey();
     bool in_range_cache = range.isInRangeCache();
     if (in_range_cache) {
       _read_options.read_tier = kMemtableAndRangeCacheTier; // scan with memtable and range cache without iter on SSTs on hit ranges
@@ -2360,8 +2360,8 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
     if (range_start_key.empty()) {
       it->SeekToFirst();
     } else {
-      it->Seek(Slice(range_start_key));
-      if (it->Valid() && it->key() != Slice(range_start_key)) {
+      it->Seek(range_start_key);
+      if (it->Valid() && it->key() != range_start_key) {
         assert(false);
       }
     }
@@ -2369,13 +2369,13 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
     SliceVecRange new_range(true);  // TODO(jr): figure out how to reserve for new_range
     bool concatRightRangeInCache = false; // indicates that the right range of the current range should be concatenated with ranges in range cache
     for (; it->Valid(); it->Next()) {
-      if (!range.isLeftIncluded() && !range_start_key.empty() && it->key() == Slice(range_start_key)) {
+      if (!range.isLeftIncluded() && !range_start_key.empty() && it->key() == range_start_key) {
         it->Next();
         if (!it->Valid()) {
           break;
         }
       }
-      if (!range.isRightIncluded() && !range_end_key.empty() && it->key() == Slice(range_end_key)) {
+      if (!range.isRightIncluded() && !range_end_key.empty() && it->key() == range_end_key) {
         concatRightRangeInCache = true;
         break;
       }
@@ -2411,7 +2411,7 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
         lorc->putActualGapRange(std::move(new_range), !range.isLeftIncluded(), concatRightRangeInCache, false, "", "");
       } else if (new_range.isValid() && new_range.length() == 0 && !range.isLeftIncluded() && concatRightRangeInCache) {
         // put the empty gap to concat adjacent ranges in range cache
-        lorc->putActualGapRange(std::move(new_range), true, true, true, range_start_key, range_end_key);
+        lorc->putActualGapRange(std::move(new_range), true, true, true, range_start_key.ToString(), range_end_key.ToString());
       }
     }
   }

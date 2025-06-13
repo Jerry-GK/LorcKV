@@ -220,7 +220,7 @@ public:
     /**
      * TODO(jr): Explain this method whose logic is very complicated
      */
-    virtual std::vector<LogicalRange> divideLogicalRange(const std::string& start_key, size_t len, const std::string& end_key) const = 0;
+    virtual std::vector<LogicalRange> divideLogicalRange(const Slice& start_key, size_t len, const Slice& end_key) const = 0;
 
 protected:
     friend class SliceVecRangeCacheIterator;
