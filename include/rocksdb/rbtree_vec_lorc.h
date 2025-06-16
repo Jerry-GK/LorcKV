@@ -13,6 +13,31 @@ class RBTreeRangeCacheIterator;
 class SliceVecRangeCacheIterator;
 class Arena;
 
+// Custom comparator for heterogeneous lookup
+struct SliceVecRangeComparator {
+    using is_transparent = void; // Enable heterogeneous lookup
+    
+    bool operator()(const SliceVecRange& lhs, const SliceVecRange& rhs) const {
+        return lhs.startUserKey() < rhs.startUserKey();
+    }
+    
+    bool operator()(const SliceVecRange& lhs, const Slice& rhs) const {
+        return lhs.startUserKey() < rhs;
+    }
+    
+    bool operator()(const Slice& lhs, const SliceVecRange& rhs) const {
+        return lhs < rhs.startUserKey();
+    }
+    
+    bool operator()(const SliceVecRange& lhs, const std::string& rhs) const {
+        return lhs.startUserKey() < Slice(rhs);
+    }
+    
+    bool operator()(const std::string& lhs, const SliceVecRange& rhs) const {
+        return Slice(lhs) < rhs.startUserKey();
+    }
+};
+
 /**
  * RBTreeSliceVecRangeCache: A cache implementation using Red-Black Tree to store SliceVecRange data
  * Uses ordered containers to maintain ranges sorted by their start keys and lengths
@@ -47,7 +72,7 @@ private:
     size_t getLengthInRangeCache(const Slice& start_key, const Slice& end_key, size_t remaining_length) const;
 
     friend class RBTreeSliceVecRangeCacheIterator;
-    std::set<SliceVecRange> orderedRanges;     // Container for ranges sorted by start key
+    std::set<SliceVecRange, SliceVecRangeComparator> orderedRanges;     // Container for ranges sorted by start key
     std::multimap<int, std::string> lengthMap;  // Container for ranges sorted by length (for victim selection)
     uint64_t cache_timestamp;          // Timestamp for LRU-like functionality
     mutable std::shared_mutex cache_mutex_;

@@ -129,16 +129,21 @@ SliceVecRange::SliceVecRange(const SliceVecRange& other) {
         this->data = std::make_shared<RangeData>();
         this->data->internal_keys = other.data->internal_keys;
         this->data->values = other.data->values;
+        for (size_t i = 0; i < this->range_length; i++) {
+            this->data->internal_key_slices.emplace_back(this->data->internal_keys[i].data(), this->data->internal_keys[i].size() - internal_key_extra_bytes);
+            this->data->user_key_slices.emplace_back(this->data->internal_keys[i].data(), this->data->internal_keys[i].size() - internal_key_extra_bytes);
+            this->data->value_slices.emplace_back(this->data->values[i]);
+        }
     }
 }
 
 SliceVecRange::SliceVecRange(SliceVecRange&& other) noexcept {
-    data = std::move(other.data);
-    valid = other.valid;
-    range_length = other.range_length;
-    byte_size = other.byte_size;
-    timestamp = other.timestamp;
-    
+    this->data = std::move(other.data);
+    this->valid = other.valid;
+    this->range_length = other.range_length;
+    this->byte_size = other.byte_size;
+    this->timestamp = other.timestamp;
+
     other.valid = false;
     other.range_length = 0;
     other.timestamp = 0;
@@ -153,15 +158,16 @@ SliceVecRange::SliceVecRange(SliceVecRange&& other) noexcept {
 //     this->timestamp = 0;
 // }
 
-SliceVecRange::SliceVecRange(Slice startUserKey) {
-    data = std::make_shared<RangeData>();
-    data->internal_keys.push_back(startUserKey.ToString());
-    data->internal_keys[0].append(internal_key_extra_bytes, '\0');
-    this->valid = true;
-    this->range_length = 1;
-    this->byte_size = data->internal_keys[0].size();
-    this->timestamp = 0;
-}
+// DEPRECATED: used to generate a temp range to compare
+// SliceVecRange::SliceVecRange(Slice startUserKey) {
+//     data = std::make_shared<RangeData>();
+//     data->internal_keys.push_back(startUserKey.ToString());
+//     data->internal_keys[0].append(internal_key_extra_bytes, '\0');
+//     this->valid = true;
+//     this->range_length = 1;
+//     this->byte_size = data->internal_keys[0].size();
+//     this->timestamp = 0;
+// }
 
 SliceVecRange::SliceVecRange(std::shared_ptr<RangeData> data_, size_t range_length_) {
     this->data = data_;
@@ -189,6 +195,11 @@ SliceVecRange& SliceVecRange::operator=(const SliceVecRange& other) {
             this->data = std::make_shared<RangeData>();
             this->data->internal_keys = other.data->internal_keys;
             this->data->values = other.data->values;
+            for (size_t i = 0; i < this->range_length; i++) {
+                this->data->internal_key_slices.emplace_back(this->data->internal_keys[i].data(), this->data->internal_keys[i].size() - internal_key_extra_bytes);
+                this->data->user_key_slices.emplace_back(this->data->internal_keys[i].data(), this->data->internal_keys[i].size() - internal_key_extra_bytes);
+                this->data->value_slices.emplace_back(this->data->values[i]);
+            }
         } else {
             this->data.reset();
         }
@@ -199,15 +210,15 @@ SliceVecRange& SliceVecRange::operator=(const SliceVecRange& other) {
 SliceVecRange& SliceVecRange::operator=(SliceVecRange&& other) noexcept {
     if (this != &other) {
         // Clean up current object's resources
-        data.reset();
+        this->data.reset();
         
         // Move resources from other
-        data = std::move(other.data);
-        valid = other.valid;
-        range_length = other.range_length;
-        byte_size = other.byte_size;
-        timestamp = other.timestamp;
-        
+        this->data = std::move(other.data);
+        this->valid = other.valid;
+        this->range_length = other.range_length;
+        this->byte_size = other.byte_size;
+        this->timestamp = other.timestamp;
+
         // Reset other object's state
         other.valid = false;
         other.range_length = 0;
@@ -216,39 +227,46 @@ SliceVecRange& SliceVecRange::operator=(SliceVecRange&& other) noexcept {
     return *this;
 }
 
-Slice SliceVecRange::startUserKey() const {
+const Slice& SliceVecRange::startUserKey() const {
     assert(valid && range_length > 0 && data->internal_keys.size() > 0 && data->internal_keys[0].size() > internal_key_extra_bytes);
-    return Slice(data->internal_keys[0].data(), data->internal_keys[0].size() - internal_key_extra_bytes);
+    // return Slice(data->internal_keys[0].data(), data->internal_keys[0].size() - internal_key_extra_bytes);
+    return this->data->user_key_slices[0];
 }
 
-Slice  SliceVecRange::endUserKey() const {
+const Slice& SliceVecRange::endUserKey() const {
     assert(valid && range_length > 0 && data->internal_keys.size() > 0 && data->internal_keys[range_length - 1].size() > internal_key_extra_bytes);
-    return Slice(data->internal_keys[range_length - 1].data(), data->internal_keys[range_length - 1].size() - internal_key_extra_bytes);
+    // return Slice(data->internal_keys[range_length - 1].data(), data->internal_keys[range_length - 1].size() - internal_key_extra_bytes);
+    return this->data->user_key_slices[range_length - 1];
 }  
 
-Slice SliceVecRange::startInternalKey() const {
+const Slice& SliceVecRange::startInternalKey() const {
     assert(valid && range_length > 0 && data->internal_keys.size() > 0);
-    return Slice(data->internal_keys[0]);
+    // return Slice(data->internal_keys[0]);
+    return this->data->internal_key_slices[0];
 }
 
-Slice  SliceVecRange::endInternalKey() const {
+const Slice& SliceVecRange::endInternalKey() const {
     assert(valid && range_length > 0 && data->internal_keys.size() > 0);
-    return Slice(data->internal_keys[range_length - 1]);
+    // return Slice(data->internal_keys[range_length - 1]);
+    return this->data->internal_key_slices[range_length - 1];
 }   
 
-Slice SliceVecRange::internalKeyAt(size_t index) const {
+const Slice& SliceVecRange::internalKeyAt(size_t index) const {
     assert(valid && range_length > index);
-    return Slice(data->internal_keys[index]);
+    // return Slice(data->internal_keys[index]);
+    return this->data->internal_key_slices[index];
 }
 
-Slice SliceVecRange::userKeyAt(size_t index) const {
+const Slice& SliceVecRange::userKeyAt(size_t index) const {
     assert(valid && range_length > index && data->internal_keys[index].size() > internal_key_extra_bytes);
-    return Slice(data->internal_keys[index].data(), data->internal_keys[index].size() - internal_key_extra_bytes);
+    // return Slice(data->internal_keys[index].data(), data->internal_keys[index].size() - internal_key_extra_bytes);
+    return this->data->user_key_slices[index];
 }
 
-Slice SliceVecRange::valueAt(size_t index) const {
+const Slice& SliceVecRange::valueAt(size_t index) const {
     assert(valid && range_length > index);
-    return Slice(data->values[index]);
+    // return Slice(data->values[index]);
+    return this->data->value_slices[index];
 }
 
 size_t SliceVecRange::length() const {
@@ -365,7 +383,7 @@ SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& range
         return ranges[0];
     }
     
-    // 找到最长的 SliceVecRange
+    // find the longest SliceVecRange
     int max_length_index = 0;
     size_t max_length = 0;
     size_t total_length = 0;
@@ -391,6 +409,15 @@ SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& range
         base_data->values.insert(base_data->values.begin(),
             std::make_move_iterator(ranges[i].data->values.begin()),
             std::make_move_iterator(ranges[i].data->values.end()));
+        base_data->internal_key_slices.insert(base_data->internal_key_slices.begin(),
+            std::make_move_iterator(ranges[i].data->internal_key_slices.begin()),
+            std::make_move_iterator(ranges[i].data->internal_key_slices.end()));
+        base_data->user_key_slices.insert(base_data->user_key_slices.begin(),
+            std::make_move_iterator(ranges[i].data->user_key_slices.begin()),
+            std::make_move_iterator(ranges[i].data->user_key_slices.end()));
+        base_data->value_slices.insert(base_data->value_slices.begin(),
+            std::make_move_iterator(ranges[i].data->value_slices.begin()),
+            std::make_move_iterator(ranges[i].data->value_slices.end()));
     }
 
     for (int i = max_length_index + 1; i < (int)ranges.size(); i++) {
@@ -400,6 +427,15 @@ SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& range
         base_data->values.insert(base_data->values.end(),
             std::make_move_iterator(ranges[i].data->values.begin()),
             std::make_move_iterator(ranges[i].data->values.end()));
+        base_data->internal_key_slices.insert(base_data->internal_key_slices.end(),
+            std::make_move_iterator(ranges[i].data->internal_key_slices.begin()),
+            std::make_move_iterator(ranges[i].data->internal_key_slices.end()));
+        base_data->user_key_slices.insert(base_data->user_key_slices.end(),
+            std::make_move_iterator(ranges[i].data->user_key_slices.begin()),
+            std::make_move_iterator(ranges[i].data->user_key_slices.end()));
+        base_data->value_slices.insert(base_data->value_slices.end(),
+            std::make_move_iterator(ranges[i].data->value_slices.begin()),
+            std::make_move_iterator(ranges[i].data->value_slices.end()));   
     }
     
     return SliceVecRange(base_data, total_length);
@@ -409,14 +445,20 @@ void SliceVecRange::reserve(size_t len) {
     assert(valid);
     data->internal_keys.reserve(len);
     data->values.reserve(len);
+    data->internal_key_slices.reserve(len);
+    data->user_key_slices.reserve(len);
+    data->value_slices.reserve(len);
 }
 
 void SliceVecRange::emplace(const Slice& internal_key, const Slice& value) {
     assert(valid);
-    data->internal_keys.emplace_back(internal_key.data(), internal_key.size());
-    data->values.emplace_back(value.data(), value.size());
     range_length++;
     byte_size += internal_key.size() + value.size();
+    data->internal_keys.emplace_back(internal_key.data(), internal_key.size());
+    data->values.emplace_back(value.data(), value.size());
+    data->internal_key_slices.emplace_back(data->internal_keys.back().data(), data->internal_keys.back().size());
+    data->user_key_slices.emplace_back(data->internal_keys.back().data(), data->internal_keys.back().size() - internal_key_extra_bytes);
+    data->value_slices.emplace_back(data->values.back().data(), data->values.back().size());
 }
 
 // void SliceVecRange::emplaceMoved(std::string& internal_key, std::string& value) {

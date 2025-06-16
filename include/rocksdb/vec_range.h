@@ -17,6 +17,9 @@ private:
     struct RangeData {
         std::vector<std::string> internal_keys;  // internal keys actually, but internal seq number is not participated in comparasion
         std::vector<std::string> values;
+        std::vector<Slice> internal_key_slices;
+        std::vector<Slice> user_key_slices;
+        std::vector<Slice> value_slices;
     };
     std::shared_ptr<RangeData> data;
     mutable size_t range_length; // size in length
@@ -31,8 +34,8 @@ public:
     SliceVecRange(bool valid = false);
     ~SliceVecRange();      
     // create from string vector
-    // create a SliceVecRange with a single key-value pair, used for seekx
-    SliceVecRange(Slice startUserKey);
+    // DEPRECATED: create a SliceVecRange with a single key-value pair, used for seekx
+    // SliceVecRange(Slice startUserKey);
     // deep copy
     SliceVecRange(const SliceVecRange& other);
     // move copy
@@ -49,15 +52,15 @@ public:
     // empalce a key-value pair string in a moved pattern
     void emplaceMoved(std::string& internal_key, std::string& value);
 
-    Slice startUserKey() const; // return in user key format slice, for range cache location
-    Slice endUserKey() const; // return in user key format slice, for range cache location
+    const Slice& startUserKey() const; // return in user key format slice, for range cache location
+    const Slice& endUserKey() const; // return in user key format slice, for range cache location
 
-    Slice startInternalKey() const;
-    Slice endInternalKey() const;
+    const Slice& startInternalKey() const;
+    const Slice& endInternalKey() const;
 
-    Slice internalKeyAt(size_t index) const;
-    Slice userKeyAt(size_t index) const;
-    Slice valueAt(size_t index) const;
+    const Slice& internalKeyAt(size_t index) const;
+    const Slice& userKeyAt(size_t index) const;
+    const Slice& valueAt(size_t index) const;
 
     size_t length() const;
     size_t byteSize() const;

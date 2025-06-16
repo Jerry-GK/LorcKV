@@ -63,8 +63,7 @@ void RBTreeSliceVecRangeCacheIterator::Seek(const Slice& target_internal_key) {
     }
     assert(target_internal_key.size() > SliceVecRange::internal_key_extra_bytes);
     Slice target_user_key = Slice(target_internal_key.data(), target_internal_key.size() - SliceVecRange::internal_key_extra_bytes);
-    SliceVecRange temp_range(target_user_key);
-    current_range = cache->orderedRanges.upper_bound(temp_range); // startKey > target
+    current_range = cache->orderedRanges.upper_bound(target_user_key); // startKey > target
     if (current_range != cache->orderedRanges.begin()) {
         --current_range;
     }
@@ -93,8 +92,7 @@ void RBTreeSliceVecRangeCacheIterator::SeekForPrev(const Slice& target_internal_
     }
     assert(target_internal_key.size() > SliceVecRange::internal_key_extra_bytes);
     Slice target_user_key = Slice(target_internal_key.data(), target_internal_key.size() - SliceVecRange::internal_key_extra_bytes);
-    SliceVecRange temp_range(target_user_key);
-    current_range = cache->orderedRanges.upper_bound(temp_range);
+    current_range = cache->orderedRanges.upper_bound(target_user_key);
     if (current_range != cache->orderedRanges.begin()) {
         --current_range;
     }

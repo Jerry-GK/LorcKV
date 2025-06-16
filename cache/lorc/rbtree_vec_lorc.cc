@@ -32,7 +32,7 @@ void RBTreeSliceVecRangeCache::putOverlappingRefRange(ReferringSliceVecRange&& n
     std::string newRangeStr = newRefRange.toString();
 
     // Find the first SliceVecRange that may overlap with newRefRange (keys in ref ranges are all user_key)
-    auto it = orderedRanges.upper_bound(SliceVecRange(newRefRange.startKey()));
+    auto it = orderedRanges.upper_bound(newRefRange.startKey());
     if (it != orderedRanges.begin()) {
         --it;
     }
@@ -189,7 +189,7 @@ bool RBTreeSliceVecRangeCache::updateEntry(const Slice& internal_key, const Slic
     std::unique_lock<std::shared_mutex> lock(cache_mutex_);
     // Update the entry in the SliceVecRange
     Slice user_key = Slice(internal_key.data(), internal_key.size() - SliceVecRange::internal_key_extra_bytes);
-    auto it = orderedRanges.upper_bound(SliceVecRange(internal_key));
+    auto it = orderedRanges.upper_bound(internal_key);
     if (it != orderedRanges.begin()) {
         it--;
     }
@@ -265,7 +265,7 @@ void RBTreeSliceVecRangeCache::victim() {
         // Remove the logical range from ranges_view
         ranges_view.removeRange(victimRangeStartKey);
     } else {
-        auto it = orderedRanges.find(SliceVecRange(victimRangeStartKey));
+        auto it = orderedRanges.find(victimRangeStartKey);  // Direct heterogeneous lookup
         assert(it != orderedRanges.end() && it->startUserKey() == victimRangeStartKey);
         // Truncate the last remaining SliceVecRange
         logger.debug("Truncate: " + it->toString());
@@ -281,7 +281,7 @@ void RBTreeSliceVecRangeCache::victim() {
 
 void RBTreeSliceVecRangeCache::pinRange(std::string startKey) {
     std::unique_lock<std::shared_mutex> lock(cache_mutex_);
-    auto it = orderedRanges.find(SliceVecRange(startKey));
+    auto it = orderedRanges.find(startKey);  // Direct heterogeneous lookup
     if (it != orderedRanges.end() && it->startUserKey() == startKey) {
         // update the timestamp
         it->setTimestamp(this->cache_timestamp++);
@@ -458,14 +458,14 @@ size_t RBTreeSliceVecRangeCache::getLengthInRangeCache(const Slice& start_key, c
     size_t total_length = 0;
     
     // Find the range that contains or comes after start_key
-    auto start_it = orderedRanges.upper_bound(SliceVecRange(start_key));
+    auto start_it = orderedRanges.upper_bound(start_key);  // Direct heterogeneous lookup without creating temporary object
     if (start_it != orderedRanges.begin()) {
         --start_it;
         assert(start_it->endUserKey() >= start_key);
     }
     
     // Find the range that contains or comes after end_key
-    auto end_it = orderedRanges.upper_bound(SliceVecRange(end_key));
+    auto end_it = orderedRanges.upper_bound(end_key);  // Direct heterogeneous lookup without creating temporary object
     if (end_it != orderedRanges.begin()) {
         --end_it;
         assert(end_it->endUserKey() >= end_key);
