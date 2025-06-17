@@ -154,6 +154,67 @@ SliceVecRange& SliceVecRange::operator=(SliceVecRange&& other) noexcept {
     return *this;
 }
 
+SliceVecRange SliceVecRange::buildFromReferringSliceVecRange(const ReferringSliceVecRange& refRange) {
+    SliceVecRange newRange(true);
+    newRange.reserve(refRange.length());
+    
+    for (size_t i = 0; i < refRange.length(); i++) {
+        Slice internal_key = refRange.keyAt(i);
+        std::string internal_key_str = InternalKey(internal_key, refRange.getSeqNum(), kTypeRangeCacheValue).Encode().ToString();
+        Slice value = refRange.valueAt(i);
+        newRange.emplace(Slice(internal_key_str), value);
+    }
+    
+    return newRange;
+}
+
+SliceVecRange SliceVecRange::dumpSubRangeFromReferringSliceVecRange(const ReferringSliceVecRange& refRange, const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded) {
+    assert(refRange.isValid() && refRange.length() > 0 && refRange.startKey() <= startKey && startKey <= endKey && endKey <= refRange.endKey());
+
+    // find the start position of the subrange
+    int start_pos = refRange.find(startKey);
+    if (start_pos < 0 || (size_t)start_pos >= refRange.length()) {
+        assert(false);
+        return SliceVecRange(false);
+    }
+    
+    if (refRange.keyAt(start_pos) == startKey && !leftIncluded) {
+        start_pos++;
+    }
+    
+    int end_pos = refRange.find(endKey);
+    if (end_pos < 0) {
+        assert(false);
+        return SliceVecRange(false);
+    }
+    
+    if (refRange.keyAt(end_pos) == endKey) {
+        if (!rightIncluded) {
+            end_pos--;
+        }
+    } else {
+        end_pos--;
+    }
+
+    if (start_pos > end_pos || (size_t)start_pos >= refRange.length() || end_pos < 0) {
+        // cant find entries in the range
+        return SliceVecRange(false);
+    }
+    
+    SliceVecRange result(true);
+    size_t num_elements = end_pos - start_pos + 1;
+    result.reserve(num_elements);
+    
+    // actually copy the subrange data
+    for (int i = start_pos; i <= end_pos; i++) {
+        // use kTypeRangeCacheValue as the value type for internal keys of range cache
+        std::string internal_key_str = InternalKey(refRange.keyAt(i), refRange.getSeqNum(), kTypeRangeCacheValue).Encode().ToString();
+        result.emplace(Slice(internal_key_str), refRange.valueAt(i));
+    }
+    
+    return result;
+}
+
 const Slice& SliceVecRange::startUserKey() const {
     assert(valid && range_length > 0 && data->internal_keys.size() > 0 && data->internal_keys[0].size() > internal_key_extra_bytes);
     // return Slice(data->internal_keys[0].data(), data->internal_keys[0].size() - internal_key_extra_bytes);

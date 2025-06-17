@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include "rocksdb/ref_vec_range.h"
 #include "rocksdb/slice.h"
 
 namespace ROCKSDB_NAMESPACE {
@@ -42,6 +43,13 @@ public:
     SliceVecRange(SliceVecRange&& other) noexcept;
     SliceVecRange& operator=(const SliceVecRange& other);
     SliceVecRange& operator=(SliceVecRange&& other) noexcept;
+
+    // build a SliceVecRange from ReferringSliceVecRange
+    static SliceVecRange buildFromReferringSliceVecRange(const ReferringSliceVecRange& refRange);
+
+    // materialize the subrange (startKey, endKey)  to SliceVecRange
+    // it's ensured that this->startKey() <= startKey <= endKey <= this->endKey()
+    static SliceVecRange dumpSubRangeFromReferringSliceVecRange(const ReferringSliceVecRange& refRange, const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded);
 
     // reserve the range
     void reserve(size_t len);

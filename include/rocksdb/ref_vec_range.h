@@ -4,7 +4,6 @@
 #include <vector>
 #include <memory>
 #include "rocksdb/slice.h"
-#include "rocksdb/vec_range.h"
 #include "rocksdb/types.h"
 
 namespace ROCKSDB_NAMESPACE {
@@ -53,12 +52,10 @@ public:
     size_t length() const;
     bool isValid() const;
 
+    SequenceNumber getSeqNum() const;
+
     // return the first element index whose key is < greater than or equal > to key
     int find(const Slice& key) const;
-
-    // materialize the subrange (startKey, endKey)  to SliceVecRange
-    // it's ensured that this->startKey() <= startKey <= endKey <= this->endKey()
-    SliceVecRange dumpSubRange(const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded) const;
 
     std::string toString() const;
 

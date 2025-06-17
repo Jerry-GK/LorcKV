@@ -48,7 +48,7 @@ public:
     ~RBTreeSliceVecRangeCache() override;
 
     void putOverlappingRefRange(ReferringSliceVecRange&& newRefRange) override;
-    void putActualGapRange(SliceVecRange&& newRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) override;
+    void putActualGapRange(ReferringSliceVecRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) override;
     bool updateEntry(const Slice& key, const Slice& value) override;
     void victim() override;
     void tryVictim() override;

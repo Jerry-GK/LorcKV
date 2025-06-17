@@ -131,6 +131,10 @@ bool ReferringSliceVecRange::isValid() const {
     return valid;
 }
 
+SequenceNumber ReferringSliceVecRange::getSeqNum() const {
+    return seq_num;
+}
+
 int ReferringSliceVecRange::find(const Slice& key) const {
     assert(valid && range_length > 0);
     if (!valid || range_length == 0) {
@@ -174,53 +178,6 @@ void ReferringSliceVecRange::emplace(const Slice& key, const Slice& value) {
     slice_data->slice_keys.emplace_back(key);
     slice_data->slice_values.emplace_back(value);
     range_length++;
-}
-
-SliceVecRange ReferringSliceVecRange::dumpSubRange(const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded) const {
-    assert(valid && range_length > 0 && this->startKey() <= startKey && startKey <= endKey && endKey <= this->endKey());
-
-    // find the start position of the subrange
-    int start_pos = find(startKey);
-    if (start_pos < 0 || (size_t)start_pos >= range_length) {
-        assert(false);
-        return SliceVecRange(false);
-    }
-    
-    if (keyAt(start_pos) == startKey && !leftIncluded) {
-        start_pos++;
-    }
-    
-    int end_pos = find(endKey);
-    if (end_pos < 0) {
-        assert(false);
-        return SliceVecRange(false);
-    }
-    
-    if (keyAt(end_pos) == endKey) {
-        if (!rightIncluded) {
-            end_pos--;
-        }
-    } else {
-        end_pos--;
-    }
-    
-    if (start_pos > end_pos || (size_t)start_pos >= range_length || end_pos < 0) {
-        // cant find entries in the range
-        return SliceVecRange(false);
-    }
-    
-    SliceVecRange result(true);
-    size_t num_elements = end_pos - start_pos + 1;
-    result.reserve(num_elements);
-    
-    // actually copy the subrange data
-    for (int i = start_pos; i <= end_pos; i++) {
-        // use kTypeRangeCacheValue as the value type for internal keys of range cache
-        std::string internal_key_str = InternalKey(keyAt(i), seq_num, kTypeRangeCacheValue).Encode().ToString();
-        result.emplace(Slice(internal_key_str), valueAt(i));
-    }
-    
-    return result;
 }
 
 }  // namespace ROCKSDB_NAMESPACE

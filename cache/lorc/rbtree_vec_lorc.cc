@@ -55,7 +55,7 @@ void RBTreeSliceVecRangeCache::putOverlappingRefRange(ReferringSliceVecRange&& n
             // masterialize the newRefRange of (lastStartKey, it->startUserKey())
             assert(lastStartKey <= it->startUserKey());
             if (lastStartKey < it->startUserKey()) {
-                SliceVecRange nonOverlappingSubRange = newRefRange.dumpSubRange(lastStartKey, it->startUserKey(), leftIncluded, false);
+                SliceVecRange nonOverlappingSubRange = SliceVecRange::dumpSubRangeFromReferringSliceVecRange(newRefRange, lastStartKey, it->startUserKey(), leftIncluded, false);
                 if (nonOverlappingSubRange.isValid() && nonOverlappingSubRange.length() > 0) {
                     // put into logical ranges view with right concation, with left concation if not leftIncluded
                     this->ranges_view.putLogicalRange(LogicalRange(nonOverlappingSubRange.startUserKey().ToString(), nonOverlappingSubRange.endUserKey().ToString(), nonOverlappingSubRange.length(), true, true, true), !leftIncluded, true);
@@ -86,7 +86,7 @@ void RBTreeSliceVecRangeCache::putOverlappingRefRange(ReferringSliceVecRange&& n
 
     // handle the last non-overlapping subrange if exists (case that has no right split)
     if (leftIncluded ? lastStartKey <= newRefRange.endKey() : lastStartKey < newRefRange.endKey()) {
-        SliceVecRange nonOverlappingSubRange = newRefRange.dumpSubRange(lastStartKey, newRefRange.endKey(), leftIncluded, true);
+        SliceVecRange nonOverlappingSubRange = SliceVecRange::dumpSubRangeFromReferringSliceVecRange(newRefRange, lastStartKey, newRefRange.endKey(), leftIncluded, true);
         if (nonOverlappingSubRange.isValid() && nonOverlappingSubRange.length() > 0) {
             // put into logical ranges view with left concation if not leftIncluded
             this->ranges_view.putLogicalRange(LogicalRange(nonOverlappingSubRange.startUserKey().ToString(), nonOverlappingSubRange.endUserKey().ToString(), nonOverlappingSubRange.length(), true, true, true), !leftIncluded, false);
@@ -139,9 +139,10 @@ void RBTreeSliceVecRangeCache::putOverlappingRefRange(ReferringSliceVecRange&& n
     // deconstruction of the overlapping strings of old ranges with the deconstruction of leftRanges and rightRanges
 }
 
-void RBTreeSliceVecRangeCache::putActualGapRange(SliceVecRange&& newRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) {
+void RBTreeSliceVecRangeCache::putActualGapRange(ReferringSliceVecRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) {
     std::unique_lock<std::shared_mutex> lock(cache_mutex_); // Acquire unique lock for writing
     std::chrono::high_resolution_clock::time_point start_time;
+    SliceVecRange newRange = SliceVecRange::buildFromReferringSliceVecRange(newRefRange);
     if (this->enable_statistic) {
         start_time = std::chrono::high_resolution_clock::now();
     }

@@ -2366,7 +2366,8 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
       }
     }
 
-    SliceVecRange new_range(true);  // TODO(jr): figure out how to reserve for new_range
+    // ref range for the gap range not in range cache
+    ReferringSliceVecRange ref_slice_vec_range(true, seq_num);
     bool concatRightRangeInCache = false; // indicates that the right range of the current range should be concatenated with ranges in range cache
     for (; it->Valid(); it->Next()) {
       if (!range.isLeftIncluded() && !range_start_key.empty() && it->key() == range_start_key) {
@@ -2389,7 +2390,7 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
         // fill the gap range (with an extra copy for each key-value pair)
         // use kTypeRangeCacheValue as the value type for internal keys of range cache
         std::string internal_key_str = InternalKey(it->key(), seq_num, kTypeRangeCacheValue).Encode().ToString();
-        new_range.emplace(Slice(internal_key_str), Slice(it->value()));
+        ref_slice_vec_range.emplace(Slice(keys->back()), Slice(values->back()));
       }
 
       count++;
@@ -2406,12 +2407,12 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
 
     if (lorc && !in_range_cache) {
       // try to put non-hit range to range cache
-      if (new_range.isValid() && new_range.length() > 0) {
+      if (ref_slice_vec_range.isValid() && ref_slice_vec_range.length() > 0) {
         // not included in non-hit ranges indicates that the range should be concatenated with ranges in range cache on the corresponding side
-        lorc->putActualGapRange(std::move(new_range), !range.isLeftIncluded(), concatRightRangeInCache, false, "", "");
-      } else if (new_range.isValid() && new_range.length() == 0 && !range.isLeftIncluded() && concatRightRangeInCache) {
+        lorc->putActualGapRange(std::move(ref_slice_vec_range), !range.isLeftIncluded(), concatRightRangeInCache, false, "", "");
+      } else if (ref_slice_vec_range.isValid() && ref_slice_vec_range.length() == 0 && !range.isLeftIncluded() && concatRightRangeInCache) {
         // put the empty gap to concat adjacent ranges in range cache
-        lorc->putActualGapRange(std::move(new_range), true, true, true, range_start_key.ToString(), range_end_key.ToString());
+        lorc->putActualGapRange(std::move(ref_slice_vec_range), true, true, true, range_start_key.ToString(), range_end_key.ToString());
       }
     }
   }
