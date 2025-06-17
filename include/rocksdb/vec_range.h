@@ -90,7 +90,6 @@ public:
 
     static const int internal_key_extra_bytes = 8;
     static const bool enable_async_release = false;
-    static const size_t kAsyncReleaseThreshold = 16 * 1024 * 1024; // Threshold for asynchronous resource release (in bytes)
 };
 
 }  // namespace ROCKSDB_NAMESPACE

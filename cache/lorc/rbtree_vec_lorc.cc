@@ -186,6 +186,7 @@ void RBTreeSliceVecRangeCache::putActualGapRange(SliceVecRange&& newRange, bool 
 }
 
 bool RBTreeSliceVecRangeCache::updateEntry(const Slice& internal_key, const Slice& value) {
+    // TODO(jr): lock free here
     std::unique_lock<std::shared_mutex> lock(cache_mutex_);
     // Update the entry in the SliceVecRange
     Slice user_key = Slice(internal_key.data(), internal_key.size() - SliceVecRange::internal_key_extra_bytes);

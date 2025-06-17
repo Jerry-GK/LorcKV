@@ -232,7 +232,7 @@ Status BuildTable(
           // update range cache with internal key and actual value before memtables flushed to L0
           // only update the first user key since it has the largest sequence number
           range_cache->updateEntry(key, c_iter.actual_value());
-          last_user_key = user_key.ToString();
+          last_user_key = user_key.ToString();  // TODO(jr): avoid data copy
         }
       }
       
