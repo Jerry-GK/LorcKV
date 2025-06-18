@@ -88,8 +88,8 @@ public:
 
     static std::string ToStringPlain(std::string s);
 
-    // Merge ordered and non-overlapping ranges without deep copy
-    static SliceVecRange concatRangesMoved(std::vector<SliceVecRange>& ranges);
+    // DEPRECATED: Merge ordered and non-overlapping ranges without deep copy
+    // static SliceVecRange concatRangesMoved(std::vector<SliceVecRange>& ranges);
 
     // Define comparison operator, sort by startUserKey in ascending order
     bool operator<(const SliceVecRange& other) const {

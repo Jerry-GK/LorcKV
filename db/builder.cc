@@ -221,7 +221,7 @@ Status BuildTable(
       const Slice& value = c_iter.value();
 
       // update entries in range cache before memtables are flushed to L0
-      if (range_cache) {
+      if (range_cache && blob_creation_reason == BlobFileCreationReason::kFlush) {
         ParsedInternalKey parsed_ikey;
         Status ss = ParseInternalKey(key, &parsed_ikey, false);
         if (!ss.ok()) {
@@ -232,7 +232,7 @@ Status BuildTable(
           // update range cache with internal key and actual value before memtables flushed to L0
           // only update the first user key since it has the largest sequence number
           range_cache->updateEntry(key, c_iter.actual_value());
-          last_user_key = user_key.ToString();  // TODO(jr): avoid data copy
+          last_user_key = user_key.ToString();  // TODO(jr): avoid key data copy
         }
       }
       

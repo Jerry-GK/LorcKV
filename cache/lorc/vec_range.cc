@@ -164,7 +164,6 @@ SliceVecRange SliceVecRange::buildFromReferringSliceVecRange(const ReferringSlic
         Slice value = refRange.valueAt(i);
         newRange.emplace(Slice(internal_key_str), value);
     }
-    
     return newRange;
 }
 
@@ -362,72 +361,72 @@ std::string SliceVecRange::toString() const {
     return str;
 }
 
-// Function to combine ordered and non-overlapping ranges with move semantics
-SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& ranges) {
-    if (ranges.empty()) {
-        return SliceVecRange(false);
-    }
-    if (ranges.size() == 1) {
-        return ranges[0];
-    }
+// DEPRECATED: Function to combine ordered and non-overlapping ranges with move semantics
+// SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& ranges) {
+//     if (ranges.empty()) {
+//         return SliceVecRange(false);
+//     }
+//     if (ranges.size() == 1) {
+//         return ranges[0];
+//     }
     
-    // find the longest SliceVecRange
-    int max_length_index = 0;
-    size_t max_length = 0;
-    size_t total_length = 0;
+//     // find the longest SliceVecRange
+//     int max_length_index = 0;
+//     size_t max_length = 0;
+//     size_t total_length = 0;
     
-    for (int i = 0; i < (int)ranges.size(); i++) {
-        size_t current_length = ranges[i].length();
-        total_length += current_length;
-        if (current_length > max_length) {
-            max_length = current_length;
-            max_length_index = i;
-        }
-    }
+//     for (int i = 0; i < (int)ranges.size(); i++) {
+//         size_t current_length = ranges[i].length();
+//         total_length += current_length;
+//         if (current_length > max_length) {
+//             max_length = current_length;
+//             max_length_index = i;
+//         }
+//     }
     
-    // take the longest range as the base
-    auto base_data = ranges[max_length_index].data;
-    base_data->internal_keys.reserve(total_length);
-    base_data->values.reserve(total_length);
+//     // take the longest range as the base
+//     auto base_data = ranges[max_length_index].data;
+//     base_data->internal_keys.reserve(total_length);
+//     base_data->values.reserve(total_length);
 
-    for (int i = max_length_index -1; i >= 0; i--) {
-        base_data->internal_keys.insert(base_data->internal_keys.begin(),
-            std::make_move_iterator(ranges[i].data->internal_keys.begin()),
-            std::make_move_iterator(ranges[i].data->internal_keys.end()));
-        base_data->values.insert(base_data->values.begin(),
-            std::make_move_iterator(ranges[i].data->values.begin()),
-            std::make_move_iterator(ranges[i].data->values.end()));
-        base_data->internal_key_slices.insert(base_data->internal_key_slices.begin(),
-            std::make_move_iterator(ranges[i].data->internal_key_slices.begin()),
-            std::make_move_iterator(ranges[i].data->internal_key_slices.end()));
-        base_data->user_key_slices.insert(base_data->user_key_slices.begin(),
-            std::make_move_iterator(ranges[i].data->user_key_slices.begin()),
-            std::make_move_iterator(ranges[i].data->user_key_slices.end()));
-        base_data->value_slices.insert(base_data->value_slices.begin(),
-            std::make_move_iterator(ranges[i].data->value_slices.begin()),
-            std::make_move_iterator(ranges[i].data->value_slices.end()));
-    }
+//     for (int i = max_length_index -1; i >= 0; i--) {
+//         base_data->internal_keys.insert(base_data->internal_keys.begin(),
+//             std::make_move_iterator(ranges[i].data->internal_keys.begin()),
+//             std::make_move_iterator(ranges[i].data->internal_keys.end()));
+//         base_data->values.insert(base_data->values.begin(),
+//             std::make_move_iterator(ranges[i].data->values.begin()),
+//             std::make_move_iterator(ranges[i].data->values.end()));
+//         base_data->internal_key_slices.insert(base_data->internal_key_slices.begin(),
+//             std::make_move_iterator(ranges[i].data->internal_key_slices.begin()),
+//             std::make_move_iterator(ranges[i].data->internal_key_slices.end()));
+//         base_data->user_key_slices.insert(base_data->user_key_slices.begin(),
+//             std::make_move_iterator(ranges[i].data->user_key_slices.begin()),
+//             std::make_move_iterator(ranges[i].data->user_key_slices.end()));
+//         base_data->value_slices.insert(base_data->value_slices.begin(),
+//             std::make_move_iterator(ranges[i].data->value_slices.begin()),
+//             std::make_move_iterator(ranges[i].data->value_slices.end()));
+//     }
 
-    for (int i = max_length_index + 1; i < (int)ranges.size(); i++) {
-        base_data->internal_keys.insert(base_data->internal_keys.end(),
-            std::make_move_iterator(ranges[i].data->internal_keys.begin()),
-            std::make_move_iterator(ranges[i].data->internal_keys.end()));
-        base_data->values.insert(base_data->values.end(),
-            std::make_move_iterator(ranges[i].data->values.begin()),
-            std::make_move_iterator(ranges[i].data->values.end()));
-        base_data->internal_key_slices.insert(base_data->internal_key_slices.end(),
-            std::make_move_iterator(ranges[i].data->internal_key_slices.begin()),
-            std::make_move_iterator(ranges[i].data->internal_key_slices.end()));
-        base_data->user_key_slices.insert(base_data->user_key_slices.end(),
-            std::make_move_iterator(ranges[i].data->user_key_slices.begin()),
-            std::make_move_iterator(ranges[i].data->user_key_slices.end()));
-        base_data->value_slices.insert(base_data->value_slices.end(),
-            std::make_move_iterator(ranges[i].data->value_slices.begin()),
-            std::make_move_iterator(ranges[i].data->value_slices.end()));   
-    }
+//     for (int i = max_length_index + 1; i < (int)ranges.size(); i++) {
+//         base_data->internal_keys.insert(base_data->internal_keys.end(),
+//             std::make_move_iterator(ranges[i].data->internal_keys.begin()),
+//             std::make_move_iterator(ranges[i].data->internal_keys.end()));
+//         base_data->values.insert(base_data->values.end(),
+//             std::make_move_iterator(ranges[i].data->values.begin()),
+//             std::make_move_iterator(ranges[i].data->values.end()));
+//         base_data->internal_key_slices.insert(base_data->internal_key_slices.end(),
+//             std::make_move_iterator(ranges[i].data->internal_key_slices.begin()),
+//             std::make_move_iterator(ranges[i].data->internal_key_slices.end()));
+//         base_data->user_key_slices.insert(base_data->user_key_slices.end(),
+//             std::make_move_iterator(ranges[i].data->user_key_slices.begin()),
+//             std::make_move_iterator(ranges[i].data->user_key_slices.end()));
+//         base_data->value_slices.insert(base_data->value_slices.end(),
+//             std::make_move_iterator(ranges[i].data->value_slices.begin()),
+//             std::make_move_iterator(ranges[i].data->value_slices.end()));   
+//     }
     
-    return SliceVecRange(base_data, total_length);
-}
+//     return SliceVecRange(base_data, total_length);
+// }
 
 void SliceVecRange::reserve(size_t len) {
     assert(valid);
