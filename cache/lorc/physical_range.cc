@@ -7,12 +7,12 @@
 #include <functional>
 #include <atomic>
 #include "db/dbformat.h"
-#include "rocksdb/vec_range.h"
+#include "rocksdb/physical_range.h"
 
 namespace ROCKSDB_NAMESPACE {
 
 // Only for debug (internal internal_keys)
-std::string SliceVecRange::ToStringPlain(std::string s) {
+std::string PhysicalRange::ToStringPlain(std::string s) {
     std::string result;
     result.reserve(s.size());
     for (size_t i = 0; i < s.size(); ++i) {
@@ -29,7 +29,7 @@ std::string SliceVecRange::ToStringPlain(std::string s) {
     return result;
 }
 
-SliceVecRange::SliceVecRange(bool valid_) {
+PhysicalRange::PhysicalRange(bool valid_) {
     this->data = std::make_shared<RangeData>();
     this->valid = valid_;
     this->range_length = 0;
@@ -42,12 +42,12 @@ SliceVecRange::SliceVecRange(bool valid_) {
     }
 }
 
-// TODO(jr): find out is it necessary to deconstruct SliceVecRange asynchronously
-SliceVecRange::~SliceVecRange() {
+// TODO(jr): find out is it necessary to deconstruct PhysicalRange asynchronously
+PhysicalRange::~PhysicalRange() {
     data.reset();
 }
 
-SliceVecRange::SliceVecRange(const SliceVecRange& other) {
+PhysicalRange::PhysicalRange(const PhysicalRange& other) {
     this->valid = other.valid;
     this->range_length = other.range_length;
     this->byte_size = other.byte_size;
@@ -90,7 +90,7 @@ SliceVecRange::SliceVecRange(const SliceVecRange& other) {
     }
 }
 
-SliceVecRange::SliceVecRange(SliceVecRange&& other) noexcept {
+PhysicalRange::PhysicalRange(PhysicalRange&& other) noexcept {
     this->data = std::move(other.data);
     this->valid = other.valid;
     this->range_length = other.range_length;
@@ -102,7 +102,7 @@ SliceVecRange::SliceVecRange(SliceVecRange&& other) noexcept {
     other.timestamp = 0;
 }
 
-// SliceVecRange::SliceVecRange(std::vector<std::string>&& internal_keys, std::vector<std::string>&& values, size_t range_length) {
+// PhysicalRange::PhysicalRange(std::vector<std::string>&& internal_keys, std::vector<std::string>&& values, size_t range_length) {
 //     data = std::make_shared<RangeData>();
 //     data->internal_keys = std::move(internal_keys);
 //     data->values = std::move(values);
@@ -112,7 +112,7 @@ SliceVecRange::SliceVecRange(SliceVecRange&& other) noexcept {
 // }
 
 // DEPRECATED: used to generate a temp range to compare
-// SliceVecRange::SliceVecRange(Slice startUserKey) {
+// PhysicalRange::PhysicalRange(Slice startUserKey) {
 //     data = std::make_shared<RangeData>();
 //     data->internal_keys.emplace_back(startUserKey.ToString());
 //     data->internal_keys[0].append(internal_key_extra_bytes, '\0');
@@ -122,7 +122,7 @@ SliceVecRange::SliceVecRange(SliceVecRange&& other) noexcept {
 //     this->timestamp = 0;
 // }
 
-SliceVecRange::SliceVecRange(std::shared_ptr<RangeData> data_, size_t range_length_) {
+PhysicalRange::PhysicalRange(std::shared_ptr<RangeData> data_, size_t range_length_) {
     this->data = data_;
     this->valid = true;
     this->range_length = range_length_;
@@ -134,7 +134,7 @@ SliceVecRange::SliceVecRange(std::shared_ptr<RangeData> data_, size_t range_leng
     this->timestamp = 0;
 }
 
-SliceVecRange& SliceVecRange::operator=(const SliceVecRange& other) {
+PhysicalRange& PhysicalRange::operator=(const PhysicalRange& other) {
     if (this != &other) {
         this->valid = other.valid;
         this->range_length = other.range_length;
@@ -182,7 +182,7 @@ SliceVecRange& SliceVecRange::operator=(const SliceVecRange& other) {
     return *this;
 }
 
-SliceVecRange& SliceVecRange::operator=(SliceVecRange&& other) noexcept {
+PhysicalRange& PhysicalRange::operator=(PhysicalRange&& other) noexcept {
     if (this != &other) {
         // Clean up current object's resources
         this->data.reset();
@@ -202,8 +202,8 @@ SliceVecRange& SliceVecRange::operator=(SliceVecRange&& other) noexcept {
     return *this;
 }
 
-SliceVecRange SliceVecRange::buildFromReferringSliceVecRange(const ReferringSliceVecRange& refRange) {
-    SliceVecRange newRange(true);
+PhysicalRange PhysicalRange::buildFromReferringRange(const ReferringRange& refRange) {
+    PhysicalRange newRange(true);
     newRange.initializeFromReferringRange(refRange);
     
     for (size_t i = 0; i < refRange.length(); i++) {
@@ -219,14 +219,14 @@ SliceVecRange SliceVecRange::buildFromReferringSliceVecRange(const ReferringSlic
     return newRange;
 }
 
-SliceVecRange SliceVecRange::dumpSubRangeFromReferringSliceVecRange(const ReferringSliceVecRange& refRange, const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded) {
+PhysicalRange PhysicalRange::dumpSubRangeFromReferringRange(const ReferringRange& refRange, const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded) {
     assert(refRange.isValid() && refRange.length() > 0 && refRange.startKey() <= startKey && startKey <= endKey && endKey <= refRange.endKey());
 
     // find the start position of the subrange
     int start_pos = refRange.find(startKey);
     if (start_pos < 0 || (size_t)start_pos >= refRange.length()) {
         assert(false);
-        return SliceVecRange(false);
+        return PhysicalRange(false);
     }
     
     if (refRange.keyAt(start_pos) == startKey && !leftIncluded) {
@@ -236,7 +236,7 @@ SliceVecRange SliceVecRange::dumpSubRangeFromReferringSliceVecRange(const Referr
     int end_pos = refRange.find(endKey);
     if (end_pos < 0) {
         assert(false);
-        return SliceVecRange(false);
+        return PhysicalRange(false);
     }
     
     if (refRange.keyAt(end_pos) == endKey) {
@@ -249,10 +249,10 @@ SliceVecRange SliceVecRange::dumpSubRangeFromReferringSliceVecRange(const Referr
 
     if (start_pos > end_pos || (size_t)start_pos >= refRange.length() || end_pos < 0) {
         // cant find entries in the range
-        return SliceVecRange(false);
+        return PhysicalRange(false);
     }
     
-    SliceVecRange result(true);
+    PhysicalRange result(true);
     size_t num_elements = end_pos - start_pos + 1;
     result.initializeFromReferringRangeSubset(refRange, start_pos, end_pos);
     
@@ -268,64 +268,64 @@ SliceVecRange SliceVecRange::dumpSubRangeFromReferringSliceVecRange(const Referr
     return result;
 }
 
-const Slice& SliceVecRange::startUserKey() const {
+const Slice& PhysicalRange::startUserKey() const {
     assert(valid && range_length > 0 && data->key_sizes.size() > 0 && data->key_sizes[0] > internal_key_extra_bytes);
     return this->data->user_key_slices[0];
 }
 
-const Slice& SliceVecRange::endUserKey() const {
+const Slice& PhysicalRange::endUserKey() const {
     assert(valid && range_length > 0 && data->key_sizes.size() > 0 && data->key_sizes[range_length - 1] > internal_key_extra_bytes);
     return this->data->user_key_slices[range_length - 1];
 }  
 
-const Slice& SliceVecRange::startInternalKey() const {
+const Slice& PhysicalRange::startInternalKey() const {
     assert(valid && range_length > 0 && data->key_sizes.size() > 0);
     return this->data->internal_key_slices[0];
 }
 
-const Slice& SliceVecRange::endInternalKey() const {
+const Slice& PhysicalRange::endInternalKey() const {
     assert(valid && range_length > 0 && data->key_sizes.size() > 0);
     return this->data->internal_key_slices[range_length - 1];
 }   
 
-const Slice& SliceVecRange::internalKeyAt(size_t index) const {
+const Slice& PhysicalRange::internalKeyAt(size_t index) const {
     assert(valid && range_length > index);
     return this->data->internal_key_slices[index];
 }
 
-const Slice& SliceVecRange::userKeyAt(size_t index) const {
+const Slice& PhysicalRange::userKeyAt(size_t index) const {
     assert(valid && range_length > index && data->key_sizes[index] > internal_key_extra_bytes);
     return this->data->user_key_slices[index];
 }
 
-const Slice& SliceVecRange::valueAt(size_t index) const {
+const Slice& PhysicalRange::valueAt(size_t index) const {
     assert(valid && range_length > index);
     return this->data->value_slices[index];
 }
 
-size_t SliceVecRange::length() const {
+size_t PhysicalRange::length() const {
     return range_length;
 }   
 
-size_t SliceVecRange::byteSize() const {
+size_t PhysicalRange::byteSize() const {
     return byte_size;
 }   
 
-bool SliceVecRange::isValid() const {
+bool PhysicalRange::isValid() const {
     return valid;
 }
 
-int SliceVecRange::getTimestamp() const {
+int PhysicalRange::getTimestamp() const {
     return timestamp;
 }
 
-void SliceVecRange::setTimestamp(int timestamp_) const {
+void PhysicalRange::setTimestamp(int timestamp_) const {
     this->timestamp = timestamp_;
 }
 
-bool SliceVecRange::update(const Slice& internal_key, const Slice& value) const {
+bool PhysicalRange::update(const Slice& internal_key, const Slice& value) const {
     assert(valid && range_length > 0 && internal_key.size() > internal_key_extra_bytes);    
-    Slice user_key = Slice(internal_key.data(), internal_key.size() - SliceVecRange::internal_key_extra_bytes);
+    Slice user_key = Slice(internal_key.data(), internal_key.size() - PhysicalRange::internal_key_extra_bytes);
     int index = find(user_key);
     
     if (index >= 0 && userKeyAt(index) == user_key) {
@@ -353,7 +353,7 @@ bool SliceVecRange::update(const Slice& internal_key, const Slice& value) const 
     return false;
 }
 
-int SliceVecRange::find(const Slice& key) const {
+int PhysicalRange::find(const Slice& key) const {
     assert(valid && range_length > 0 && key.size() > 0);
 
     if (!valid || range_length == 0) {
@@ -381,7 +381,7 @@ int SliceVecRange::find(const Slice& key) const {
     return left;
 }
 
-std::string SliceVecRange::toString() const {
+std::string PhysicalRange::toString() const {
     std::string str = "< " + ToStringPlain(this->startUserKey().ToString()) + " -> " + ToStringPlain(this->endUserKey().ToString()) + " >"
         + " ( len = " + std::to_string(this->length()) + " )";
     // if ((int)this->length() != std::stoi(ToStringPlain(this->endUserKey().ToString())) - std::stoi(ToStringPlain(this->startUserKey().ToString())) + 1) {
@@ -392,15 +392,15 @@ std::string SliceVecRange::toString() const {
 }
 
 // DEPRECATED: Function to combine ordered and non-overlapping ranges with move semantics
-// SliceVecRange SliceVecRange::concatRangesMoved(std::vector<SliceVecRange>& ranges) {
+// PhysicalRange PhysicalRange::concatRangesMoved(std::vector<PhysicalRange>& ranges) {
 //     if (ranges.empty()) {
-//         return SliceVecRange(false);
+//         return PhysicalRange(false);
 //     }
 //     if (ranges.size() == 1) {
 //         return ranges[0];
 //     }
     
-//     // find the longest SliceVecRange
+//     // find the longest PhysicalRange
 //     int max_length_index = 0;
 //     size_t max_length = 0;
 //     size_t total_length = 0;
@@ -455,10 +455,10 @@ std::string SliceVecRange::toString() const {
 //             std::make_move_iterator(ranges[i].data->value_slices.end()));   
 //     }
     
-//     return SliceVecRange(base_data, total_length);
+//     return PhysicalRange(base_data, total_length);
 // }
 
-void SliceVecRange::reserve(size_t len) {
+void PhysicalRange::reserve(size_t len) {
     assert(valid);
     data->key_offsets.reserve(len);
     data->key_sizes.reserve(len);
@@ -472,7 +472,7 @@ void SliceVecRange::reserve(size_t len) {
     data->value_slices.reserve(len);
 }
 
-void SliceVecRange::initializeFromReferringRange(const ReferringSliceVecRange& refRange) {
+void PhysicalRange::initializeFromReferringRange(const ReferringRange& refRange) {
     size_t keys_total_size = refRange.keysByteSize();
     size_t values_total_size = refRange.valuesByteSize();
     
@@ -486,7 +486,7 @@ void SliceVecRange::initializeFromReferringRange(const ReferringSliceVecRange& r
     reserve(refRange.length());
 }
 
-void SliceVecRange::initializeFromReferringRangeSubset(const ReferringSliceVecRange& refRange, int start_pos, int end_pos) {
+void PhysicalRange::initializeFromReferringRangeSubset(const ReferringRange& refRange, int start_pos, int end_pos) {
     size_t num_elements = end_pos - start_pos + 1;
     size_t keys_total_size = 0;
     size_t values_total_size = 0;
@@ -504,7 +504,7 @@ void SliceVecRange::initializeFromReferringRangeSubset(const ReferringSliceVecRa
     reserve(num_elements);
 }
 
-void SliceVecRange::emplaceInternal(const Slice& internal_key, const Slice& value, size_t index) {
+void PhysicalRange::emplaceInternal(const Slice& internal_key, const Slice& value, size_t index) {
     assert(valid);
     // Calculate offsets
     size_t key_offset = (index == 0) ? 0 : data->key_offsets[index - 1] + data->key_sizes[index - 1];
@@ -524,7 +524,7 @@ void SliceVecRange::emplaceInternal(const Slice& internal_key, const Slice& valu
     data->overflow_values.emplace_back(nullptr);
 }
 
-void SliceVecRange::updateValueAt(size_t index, const Slice& new_value) const {
+void PhysicalRange::updateValueAt(size_t index, const Slice& new_value) const {
     size_t original_size = data->original_value_sizes[index]; // Use original size
     
     if (new_value.size() <= original_size) {
@@ -550,7 +550,7 @@ void SliceVecRange::updateValueAt(size_t index, const Slice& new_value) const {
     }
 }
 
-void SliceVecRange::rebuildSlices() const {
+void PhysicalRange::rebuildSlices() const {
     data->internal_key_slices.clear();
     data->user_key_slices.clear();
     data->value_slices.clear();
@@ -567,7 +567,7 @@ void SliceVecRange::rebuildSlices() const {
     }
 }
 
-void SliceVecRange::rebuildSlicesAt(size_t index) const {
+void PhysicalRange::rebuildSlicesAt(size_t index) const {
     data->internal_key_slices[index] = Slice(data->keys_buffer.get() + data->key_offsets[index], data->key_sizes[index]);
     data->user_key_slices[index] = Slice(data->keys_buffer.get() + data->key_offsets[index], data->key_sizes[index] - internal_key_extra_bytes);
     

@@ -2,18 +2,18 @@
 
 #include <set>
 #include <string>
-#include "rocksdb/vec_lorc_iter.h"
+#include "rocksdb/lorc_iter.h"
 
 namespace ROCKSDB_NAMESPACE {
 
-class RBTreeSliceVecRangeCache;
-class SliceVecRange;
+class RBTreeLogicallyOrderedRangeCache;
+class PhysicalRange;
 
-class RBTreeSliceVecRangeCacheIterator : public SliceVecRangeCacheIterator {
+class RBTreeLogicallyOrderedRangeCacheIterator : public LogicallyOrderedRangeCacheIterator {
 public:
-    explicit RBTreeSliceVecRangeCacheIterator(const RBTreeSliceVecRangeCache* cache);
+    explicit RBTreeLogicallyOrderedRangeCacheIterator(const RBTreeLogicallyOrderedRangeCache* cache);
     
-    ~RBTreeSliceVecRangeCacheIterator() override;
+    ~RBTreeLogicallyOrderedRangeCacheIterator() override;
     bool Valid() const override;
     bool HasNextInRange() const override;
     void SeekToFirst() override;
@@ -28,8 +28,8 @@ public:
     Status status() const override;
 
 private:
-    const RBTreeSliceVecRangeCache* cache;
-    std::set<SliceVecRange>::const_iterator current_range;
+    const RBTreeLogicallyOrderedRangeCache* cache;
+    std::set<PhysicalRange>::const_iterator current_range;
     int current_index;
     Status iter_status;
     bool valid;

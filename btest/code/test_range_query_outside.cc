@@ -6,9 +6,9 @@
 #include "rocksdb/options.h"
 #include "rocksdb/iterator.h"
 #include "rocksdb/table.h"
-#include "rocksdb/vec_lorc.h"
-#include "rocksdb/vec_range.h"
-#include "rocksdb/ref_vec_range.h"
+#include "rocksdb/lorc.h"
+#include "rocksdb/physical_range.h"
+#include "rocksdb/ref_range.h"
 
 using namespace std;
 using namespace rocksdb;
@@ -129,16 +129,16 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
 
     std::vector<std::string> userkey_str_vec;
     std::vector<std::string> value_str_vec;
-    ReferringSliceVecRange ref_slice_vec_range(true, seq_num);
+    ReferringRange ref_range(true, seq_num);
 
-    ref_slice_vec_range.reserve(len);
+    ref_range.reserve(len);
     userkey_str_vec.reserve(len);
     value_str_vec.reserve(len);
     
     // Time tracking for ToString operations
     duration<double> toString_time(0);
     duration<double> next_time(0); // Time tracking for Next operations
-    duration<double> emplace_time(0); // Time tracking for ref_slice_vec_range.emplace
+    duration<double> emplace_time(0); // Time tracking for ref_range.emplace
 
     int i = 0;
     if (scan_start_key != "" && !scan_start_key.empty()) {
@@ -165,7 +165,7 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
         // std::string value_str = value.ToString();
         if (enable_lorc) {
             auto emplace_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
-            ref_slice_vec_range.emplace(Slice(userkey_str_vec.back()), Slice(value_str_vec.back()));
+            ref_range.emplace(Slice(userkey_str_vec.back()), Slice(value_str_vec.back()));
             if (enable_timer) {
                 auto emplace_end = high_resolution_clock::now();
                 emplace_time += duration_cast<duration<double>>(emplace_end - emplace_start);
@@ -221,8 +221,8 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
         std::cout << "\tdiffSum: " << diffSum << " bytes" << std::endl;
     }
 
-    if (enable_lorc && ref_slice_vec_range.length() != (size_t)len) {
-        std::cout << "\tslice_vec_range.size = " << ref_slice_vec_range.length() << std::endl;
+    if (enable_lorc && ref_range.length() != (size_t)len) {
+        std::cout << "\tphysical_range.size = " << ref_range.length() << std::endl;
         assert(false);
     }
 
@@ -231,7 +231,7 @@ void execute_scan(DB* db, Options options, std::string scan_start_key = "" , int
     duration<double> putRange_time{0};
     if (enable_lorc) {
         auto putRange_start = enable_timer ? high_resolution_clock::now() : high_resolution_clock::time_point();
-        options.range_cache->putOverlappingRefRange(std::move(ref_slice_vec_range)); 
+        options.range_cache->putOverlappingRefRange(std::move(ref_range)); 
         if (enable_timer) {
             auto putRange_end = high_resolution_clock::now();
             putRange_time = duration_cast<duration<double>>(putRange_end - putRange_start);
@@ -333,9 +333,9 @@ int main() {
     }
 
     // Configure LORC if enabled
-    std::shared_ptr<LogicallyOrderedSliceVecRangeCache> lorc = nullptr;
+    std::shared_ptr<LogicallyOrderedRangeCache> lorc = nullptr;
     if (enable_lorc) {
-        lorc = rocksdb::NewRBTreeSliceVecRangeCache(range_cache_size, false);
+        lorc = rocksdb::NewRBTreeLogicallyOrderedRangeCache(range_cache_size, false);
         options.range_cache = lorc;
     }
 

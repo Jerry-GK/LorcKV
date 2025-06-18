@@ -4,34 +4,34 @@
 #include <algorithm>
 #include <climits>
 #include <shared_mutex>
-#include "rocksdb/rbtree_vec_lorc.h"
-#include "rocksdb/rbtree_vec_lorc_iter.h"
+#include "rocksdb/rbtree_lorc.h"
+#include "rocksdb/rbtree_lorc_iter.h"
 #include "memory/arena.h"
 
 namespace ROCKSDB_NAMESPACE {
 
-RBTreeSliceVecRangeCache::RBTreeSliceVecRangeCache(size_t capacity_, bool enable_logger_)
-    : LogicallyOrderedSliceVecRangeCache(capacity_, enable_logger_), cache_timestamp(0) {
+RBTreeLogicallyOrderedRangeCache::RBTreeLogicallyOrderedRangeCache(size_t capacity_, bool enable_logger_)
+    : LogicallyOrderedRangeCache(capacity_, enable_logger_), cache_timestamp(0) {
 }
 
-RBTreeSliceVecRangeCache::~RBTreeSliceVecRangeCache() {
+RBTreeLogicallyOrderedRangeCache::~RBTreeLogicallyOrderedRangeCache() {
     std::unique_lock<std::shared_mutex> lock(cache_mutex_); // Lock for destruction
     orderedRanges.clear();
     lengthMap.clear();
     ranges_view.clear();
 }
 
-void RBTreeSliceVecRangeCache::putOverlappingRefRange(ReferringSliceVecRange&& newRefRange) {
+void RBTreeLogicallyOrderedRangeCache::putOverlappingRefRange(ReferringRange&& newRefRange) {
     std::unique_lock<std::shared_mutex> lock(cache_mutex_); // Acquire unique lock for writing
     std::chrono::high_resolution_clock::time_point start_time;
     if (this->enable_statistic) {
         start_time = std::chrono::high_resolution_clock::now();
     }
 
-    std::vector<SliceVecRange> mergedRanges; 
+    std::vector<PhysicalRange> mergedRanges; 
     std::string newRangeStr = newRefRange.toString();
 
-    // Find the first SliceVecRange that may overlap with newRefRange (keys in ref ranges are all user_key)
+    // Find the first PhysicalRange that may overlap with newRefRange (keys in ref ranges are all user_key)
     auto it = orderedRanges.upper_bound(newRefRange.startKey());
     if (it != orderedRanges.begin()) {
         --it;
@@ -45,7 +45,7 @@ void RBTreeSliceVecRangeCache::putOverlappingRefRange(ReferringSliceVecRange&& n
             continue;
         }
 
-        // Handle left split: if existing SliceVecRange starts before newRefRange
+        // Handle left split: if existing PhysicalRange starts before newRefRange
         // If exists, it must be the first branch matched in the loop
         if (it->startUserKey() < newRefRange.startKey() && it->endUserKey() >= newRefRange.startKey()) {
             lastStartKey = it->endUserKey();
@@ -55,7 +55,7 @@ void RBTreeSliceVecRangeCache::putOverlappingRefRange(ReferringSliceVecRange&& n
             // masterialize the newRefRange of (lastStartKey, it->startUserKey())
             assert(lastStartKey <= it->startUserKey());
             if (lastStartKey < it->startUserKey()) {
-                SliceVecRange nonOverlappingSubRange = SliceVecRange::dumpSubRangeFromReferringSliceVecRange(newRefRange, lastStartKey, it->startUserKey(), leftIncluded, false);
+                PhysicalRange nonOverlappingSubRange = PhysicalRange::dumpSubRangeFromReferringRange(newRefRange, lastStartKey, it->startUserKey(), leftIncluded, false);
                 if (nonOverlappingSubRange.isValid() && nonOverlappingSubRange.length() > 0) {
                     // put into logical ranges view with right concation, with left concation if not leftIncluded
                     this->ranges_view.putLogicalRange(LogicalRange(nonOverlappingSubRange.startUserKey().ToString(), nonOverlappingSubRange.endUserKey().ToString(), nonOverlappingSubRange.length(), true, true, true), !leftIncluded, true);
@@ -66,9 +66,9 @@ void RBTreeSliceVecRangeCache::putOverlappingRefRange(ReferringSliceVecRange&& n
             leftIncluded = false;
         }
 
-        // Remove the old overlapping SliceVecRange from both containers
-        auto sliceVecRangeStartKeys = lengthMap.equal_range(it->length());
-        for (auto itt = sliceVecRangeStartKeys.first; itt != sliceVecRangeStartKeys.second; ++itt) {
+        // Remove the old overlapping PhysicalRange from both containers
+        auto physicalRangeStartKeys = lengthMap.equal_range(it->length());
+        for (auto itt = physicalRangeStartKeys.first; itt != physicalRangeStartKeys.second; ++itt) {
             if (itt->second == it->startUserKey()) {
                 lengthMap.erase(itt);
                 break;
@@ -77,7 +77,7 @@ void RBTreeSliceVecRangeCache::putOverlappingRefRange(ReferringSliceVecRange&& n
         this->current_size -= it->byteSize();
         this->total_range_length -= it->length();
         
-        // Move the old SliceVecRange in range cache to mergedRanges, and remove it (later merged as one large range into the range cache)
+        // Move the old PhysicalRange in range cache to mergedRanges, and remove it (later merged as one large range into the range cache)
         // Using extract() without data copy
         auto current = it++;
         auto node = orderedRanges.extract(current);
@@ -86,7 +86,7 @@ void RBTreeSliceVecRangeCache::putOverlappingRefRange(ReferringSliceVecRange&& n
 
     // handle the last non-overlapping subrange if exists (case that has no right split)
     if (leftIncluded ? lastStartKey <= newRefRange.endKey() : lastStartKey < newRefRange.endKey()) {
-        SliceVecRange nonOverlappingSubRange = SliceVecRange::dumpSubRangeFromReferringSliceVecRange(newRefRange, lastStartKey, newRefRange.endKey(), leftIncluded, true);
+        PhysicalRange nonOverlappingSubRange = PhysicalRange::dumpSubRangeFromReferringRange(newRefRange, lastStartKey, newRefRange.endKey(), leftIncluded, true);
         if (nonOverlappingSubRange.isValid() && nonOverlappingSubRange.length() > 0) {
             // put into logical ranges view with left concation if not leftIncluded
             this->ranges_view.putLogicalRange(LogicalRange(nonOverlappingSubRange.startUserKey().ToString(), nonOverlappingSubRange.endUserKey().ToString(), nonOverlappingSubRange.length(), true, true, true), !leftIncluded, false);
@@ -96,10 +96,10 @@ void RBTreeSliceVecRangeCache::putOverlappingRefRange(ReferringSliceVecRange&& n
     
     // print mergedRanges
     for (auto& range : mergedRanges) {
-        logger.debug("Merged SliceVecRange: " + range.toString());
+        logger.debug("Merged PhysicalRange: " + range.toString());
     }
 
-    // Add the new merged SliceVecRange to both containers
+    // Add the new merged PhysicalRange to both containers
     for (auto& mergedRange : mergedRanges) {
         lengthMap.emplace(mergedRange.length(), mergedRange.startUserKey().ToString());
         this->current_size += mergedRange.byteSize();
@@ -129,10 +129,10 @@ void RBTreeSliceVecRangeCache::putOverlappingRefRange(ReferringSliceVecRange&& n
     // deconstruction of the overlapping strings of old ranges with the deconstruction of leftRanges and rightRanges
 }
 
-void RBTreeSliceVecRangeCache::putActualGapRange(ReferringSliceVecRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) {
+void RBTreeLogicallyOrderedRangeCache::putActualGapRange(ReferringRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) {
     std::unique_lock<std::shared_mutex> lock(cache_mutex_); // Acquire unique lock for writing
     std::chrono::high_resolution_clock::time_point start_time;
-    SliceVecRange newRange = SliceVecRange::buildFromReferringSliceVecRange(newRefRange);
+    PhysicalRange newRange = PhysicalRange::buildFromReferringRange(newRefRange);
     if (this->enable_statistic) {
         start_time = std::chrono::high_resolution_clock::now();
     }
@@ -176,11 +176,11 @@ void RBTreeSliceVecRangeCache::putActualGapRange(ReferringSliceVecRange&& newRef
     }
 }
 
-bool RBTreeSliceVecRangeCache::updateEntry(const Slice& internal_key, const Slice& value) {
+bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, const Slice& value) {
     // TODO(jr): lock free here
     std::unique_lock<std::shared_mutex> lock(cache_mutex_);
-    // Update the entry in the SliceVecRange
-    Slice user_key = Slice(internal_key.data(), internal_key.size() - SliceVecRange::internal_key_extra_bytes);
+    // Update the entry in the PhysicalRange
+    Slice user_key = Slice(internal_key.data(), internal_key.size() - PhysicalRange::internal_key_extra_bytes);
     auto it = orderedRanges.upper_bound(internal_key);
     if (it != orderedRanges.begin()) {
         it--;
@@ -195,7 +195,7 @@ bool RBTreeSliceVecRangeCache::updateEntry(const Slice& internal_key, const Slic
     return it->update(internal_key, value);
 }
 
-void RBTreeSliceVecRangeCache::tryVictim() {    
+void RBTreeLogicallyOrderedRangeCache::tryVictim() {    
     std::unique_lock<std::shared_mutex> lock(cache_mutex_); // Acquire unique lock for writing
     // If no ranges exist, nothing to evict
     if (lengthMap.empty() || orderedRanges.empty()) {
@@ -207,8 +207,8 @@ void RBTreeSliceVecRangeCache::tryVictim() {
     }
 }
 
-void RBTreeSliceVecRangeCache::victim() {    
-    // Evict the shortest SliceVecRange to minimize impact
+void RBTreeLogicallyOrderedRangeCache::victim() {    
+    // Evict the shortest PhysicalRange to minimize impact
     if (this->current_size <= this->capacity) {
         return;
     }
@@ -230,7 +230,7 @@ void RBTreeSliceVecRangeCache::victim() {
     }
 
     // If multiple ranges exist, remove the victim
-    // If only one SliceVecRange remains, truncate it to fit capacity
+    // If only one PhysicalRange remains, truncate it to fit capacity
     if (orderedRanges.size() > 1 || this->capacity <= 0) {
         for (auto it = orderedRanges.begin(); it != orderedRanges.end();) {
             if (it->startUserKey() >= victimRangeStartKey && 
@@ -259,7 +259,7 @@ void RBTreeSliceVecRangeCache::victim() {
     } else {
         auto it = orderedRanges.find(victimRangeStartKey);  // Direct heterogeneous lookup
         assert(it != orderedRanges.end() && it->startUserKey() == victimRangeStartKey);
-        // Truncate the last remaining SliceVecRange
+        // Truncate the last remaining PhysicalRange
         logger.warn("Not victim the last range: " + it->toString());
 
         // logger.debug("Truncate: " + it->toString());
@@ -273,7 +273,7 @@ void RBTreeSliceVecRangeCache::victim() {
     }
 }
 
-void RBTreeSliceVecRangeCache::pinRange(std::string startKey) {
+void RBTreeLogicallyOrderedRangeCache::pinRange(std::string startKey) {
     std::unique_lock<std::shared_mutex> lock(cache_mutex_);
     auto it = orderedRanges.find(startKey);  // Direct heterogeneous lookup
     if (it != orderedRanges.end() && it->startUserKey() == startKey) {
@@ -282,33 +282,33 @@ void RBTreeSliceVecRangeCache::pinRange(std::string startKey) {
     }
 }
 
-SliceVecRangeCacheIterator* RBTreeSliceVecRangeCache::newSliceVecRangeCacheIterator(Arena* arena) const {
+LogicallyOrderedRangeCacheIterator* RBTreeLogicallyOrderedRangeCache::newLogicallyOrderedRangeCacheIterator(Arena* arena) const {
     std::shared_lock<std::shared_mutex> lock(cache_mutex_); 
     if (arena == nullptr) {
-        return new RBTreeSliceVecRangeCacheIterator(this);
+        return new RBTreeLogicallyOrderedRangeCacheIterator(this);
     }
-    auto mem = arena->AllocateAligned(sizeof(RBTreeSliceVecRangeCacheIterator));
-    return new (mem) RBTreeSliceVecRangeCacheIterator(this);
+    auto mem = arena->AllocateAligned(sizeof(RBTreeLogicallyOrderedRangeCacheIterator));
+    return new (mem) RBTreeLogicallyOrderedRangeCacheIterator(this);
 }
 
-void RBTreeSliceVecRangeCache::printAllPhysicalRanges() const {
+void RBTreeLogicallyOrderedRangeCache::printAllPhysicalRanges() const {
     if (!logger.isEnabled()) {
         return;
     }
-    logger.debug("All physical ranges in RBTreeSliceVecRangeCache:");
+    logger.debug("All physical ranges in RBTreeLogicallyOrderedRangeCache:");
     for (auto it = orderedRanges.begin(); it != orderedRanges.end(); ++it) {
-        logger.debug("SliceVecRange: " + it->toString());
+        logger.debug("PhysicalRange: " + it->toString());
     }
-    logger.debug("Total SliceVecRange size: " + std::to_string(this->current_size));
-    logger.debug("Total SliceVecRange length: " + std::to_string(this->total_range_length));
-    logger.debug("Total SliceVecRange num: " + std::to_string(this->orderedRanges.size()));
+    logger.debug("Total PhysicalRange size: " + std::to_string(this->current_size));
+    logger.debug("Total PhysicalRange length: " + std::to_string(this->total_range_length));
+    logger.debug("Total PhysicalRange num: " + std::to_string(this->orderedRanges.size()));
 }
 
-void RBTreeSliceVecRangeCache::printAllLogicalRanges() const {
+void RBTreeLogicallyOrderedRangeCache::printAllLogicalRanges() const {
     if (!logger.isEnabled()) {
         return;
     }
-    logger.debug("All logical ranges in RBTreeSliceVecRangeCache:");
+    logger.debug("All logical ranges in RBTreeLogicallyOrderedRangeCache:");
     auto logical_ranges = this->ranges_view.getLogicalRanges();
     size_t total_len = 0;
     for (auto it = logical_ranges.begin(); it != logical_ranges.end(); ++it) {
@@ -319,7 +319,7 @@ void RBTreeSliceVecRangeCache::printAllLogicalRanges() const {
     logger.debug("Total LogicalRange num: " + std::to_string(logical_ranges.size()));
 }
 
-void RBTreeSliceVecRangeCache::printAllRangesWithKeys() const {
+void RBTreeLogicallyOrderedRangeCache::printAllRangesWithKeys() const {
     std::shared_lock<std::shared_mutex> lock(cache_mutex_); // Acquire shared lock for reading
     if (!logger.isEnabled()) {
         return;
@@ -331,7 +331,7 @@ void RBTreeSliceVecRangeCache::printAllRangesWithKeys() const {
     this->printAllPhysicalRanges();
     logger.debug("----------------------------------------\n");
 
-    logger.debug("All keys in RBTreeSliceVecRangeCache:");
+    logger.debug("All keys in RBTreeLogicallyOrderedRangeCache:");
     for (const auto& range : orderedRanges) {
         for (size_t i = 0; i < range.length(); ++i) {
             ParsedInternalKey parsed_key;
@@ -343,7 +343,7 @@ void RBTreeSliceVecRangeCache::printAllRangesWithKeys() const {
     logger.debug("----------------------------------------");
 }
 
-std::vector<LogicalRange> RBTreeSliceVecRangeCache::divideLogicalRange(const Slice& start_key, size_t len, const Slice& end_key) const {
+std::vector<LogicalRange> RBTreeLogicallyOrderedRangeCache::divideLogicalRange(const Slice& start_key, size_t len, const Slice& end_key) const {
     std::shared_lock<std::shared_mutex> lock(cache_mutex_);
     
     std::vector<LogicalRange> result;
@@ -446,7 +446,7 @@ std::vector<LogicalRange> RBTreeSliceVecRangeCache::divideLogicalRange(const Sli
     return result;
 }
 
-size_t RBTreeSliceVecRangeCache::getLengthInRangeCache(const Slice& start_key, const Slice& end_key, size_t remaining_length) const {
+size_t RBTreeLogicallyOrderedRangeCache::getLengthInRangeCache(const Slice& start_key, const Slice& end_key, size_t remaining_length) const {
     assert(!start_key.empty() && !end_key.empty() && start_key <= end_key);
     
     size_t total_length = 0;

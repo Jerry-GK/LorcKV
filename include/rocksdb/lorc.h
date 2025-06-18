@@ -7,8 +7,8 @@
 #include <memory>
 #include <chrono>
 #include "rocksdb/logical_range.h"
-#include "rocksdb/vec_range.h"
-#include "rocksdb/ref_vec_range.h"
+#include "rocksdb/physical_range.h"
+#include "rocksdb/ref_range.h"
 
 namespace ROCKSDB_NAMESPACE {
 class LorcLogger {
@@ -119,29 +119,29 @@ private:
 };
 
 // This is a cache for ranges. Key-Value Ranges is the smallest unit of data that can be cached.
-class SliceVecRangeCacheIterator;
+class LogicallyOrderedRangeCacheIterator;
 
 class Arena;
 
-class LogicallyOrderedSliceVecRangeCache {
+class LogicallyOrderedRangeCache {
 public:
-    LogicallyOrderedSliceVecRangeCache(size_t capacity_, bool enable_logger_ = false);
-    virtual ~LogicallyOrderedSliceVecRangeCache();
+    LogicallyOrderedRangeCache(size_t capacity_, bool enable_logger_ = false);
+    virtual ~LogicallyOrderedRangeCache();
 
     /**
      * Try to merge a new range(from the whole range query result) with existing overlapping ranges.
      * It will try to concat overlapping ranges into one large range
      * Only the non-overlapping subranges of newRefRange will be materialized 
-     * (slices called ToString() to generate a SliceVecRange to be merged).
+     * (slices called ToString() to generate a PhysicalRange to be merged).
      * TODO(jr): remove this method and releated logic
      */
-    virtual void putOverlappingRefRange(ReferringSliceVecRange&& newRefRange) = 0;
+    virtual void putOverlappingRefRange(ReferringRange&& newRefRange) = 0;
 
     /**
      * Try to merge a new range(from range query result not in range cache)
      * The input range should be non-overlapping with existing ranges, but a gap range which can "fill" the gap of some existing ranges.
      */
-    virtual void putActualGapRange(ReferringSliceVecRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) = 0;
+    virtual void putActualGapRange(ReferringRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) = 0;
 
     /**
      * Update an entry in existing ranges
@@ -197,7 +197,7 @@ public:
     void increaseQuerySize(int size);
 
     /**
-     * Calculate the full hit rate of SliceVecRange queries.
+     * Calculate the full hit rate of PhysicalRange queries.
      */
     double fullHitRate() const;
 
@@ -207,9 +207,9 @@ public:
     double hitSizeRate() const;
 
     /**
-     * Get a new SliceVecRange cache iterator.
+     * Get a new PhysicalRange cache iterator.
      */
-    virtual SliceVecRangeCacheIterator* newSliceVecRangeCacheIterator(Arena* arena) const = 0;
+    virtual LogicallyOrderedRangeCacheIterator* newLogicallyOrderedRangeCacheIterator(Arena* arena) const = 0;
 
     virtual void printAllRangesWithKeys() const = 0;
 
@@ -223,7 +223,7 @@ public:
     virtual std::vector<LogicalRange> divideLogicalRange(const Slice& start_key, size_t len, const Slice& end_key) const = 0;
 
 protected:
-    friend class SliceVecRangeCacheIterator;
+    friend class LogicallyOrderedRangeCacheIterator;
 
     LogicalRangesView ranges_view;
 

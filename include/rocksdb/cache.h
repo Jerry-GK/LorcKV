@@ -19,8 +19,8 @@
 #include "rocksdb/compression_type.h"
 #include "rocksdb/data_structure.h"
 #include "rocksdb/memory_allocator.h"
-#include "rocksdb/vec_lorc.h"
-#include "rocksdb/rbtree_vec_lorc.h"
+#include "rocksdb/lorc.h"
+#include "rocksdb/rbtree_lorc.h"
 
 namespace ROCKSDB_NAMESPACE {
 
@@ -580,12 +580,12 @@ Status UpdateTieredCache(
     TieredAdmissionPolicy adm_policy = TieredAdmissionPolicy::kAdmPolicyMax);
 
 // Range Cache (lorc)
-// RBTreeSliceVecRangeCache
-inline std::shared_ptr<LogicallyOrderedSliceVecRangeCache> NewRBTreeSliceVecRangeCache(size_t capacity, bool enable_logger = false) {
+// RBTreeLogicallyOrderedRangeCache
+inline std::shared_ptr<LogicallyOrderedRangeCache> NewRBTreeLogicallyOrderedRangeCache(size_t capacity, bool enable_logger = false) {
   if (capacity == 0) {
     // If capacity is 0, we return a null pointer to indicate no cache.
     return nullptr;
   }
-  return std::make_shared<RBTreeSliceVecRangeCache>(capacity, enable_logger);
+  return std::make_shared<RBTreeLogicallyOrderedRangeCache>(capacity, enable_logger);
 }  
 }// namespace ROCKSDB_NAMESPACE

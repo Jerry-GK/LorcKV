@@ -6,9 +6,9 @@
 #include "rocksdb/options.h"
 #include "rocksdb/iterator.h"
 #include "rocksdb/table.h"
-#include "rocksdb/vec_lorc.h"
-#include "rocksdb/vec_range.h"
-#include "rocksdb/ref_vec_range.h"
+#include "rocksdb/lorc.h"
+#include "rocksdb/physical_range.h"
+#include "rocksdb/ref_range.h"
 
 using namespace std;
 using namespace rocksdb;
@@ -111,9 +111,9 @@ int main() {
     }
 
     // Configure LORC if enabled
-    std::shared_ptr<LogicallyOrderedSliceVecRangeCache> lorc = nullptr;
+    std::shared_ptr<LogicallyOrderedRangeCache> lorc = nullptr;
     if (enable_lorc) {
-        lorc = rocksdb::NewRBTreeSliceVecRangeCache(range_cache_size, false);
+        lorc = rocksdb::NewRBTreeLogicallyOrderedRangeCache(range_cache_size, false);
         options.range_cache = lorc;
     }
 

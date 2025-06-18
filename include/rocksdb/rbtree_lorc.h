@@ -4,59 +4,59 @@
 #include <map>
 #include <string>
 #include <shared_mutex>
-#include "rocksdb/vec_lorc.h"
-#include "rocksdb/vec_range.h"
+#include "rocksdb/lorc.h"
+#include "rocksdb/physical_range.h"
 
 namespace ROCKSDB_NAMESPACE {
 
 class RBTreeRangeCacheIterator;
-class SliceVecRangeCacheIterator;
+class LogicallyOrderedRangeCacheIterator;
 class Arena;
 
 // Custom comparator for heterogeneous lookup
-struct SliceVecRangeComparator {
+struct PhysicalRangeComparator {
     using is_transparent = void; // Enable heterogeneous lookup
     
-    bool operator()(const SliceVecRange& lhs, const SliceVecRange& rhs) const {
+    bool operator()(const PhysicalRange& lhs, const PhysicalRange& rhs) const {
         return lhs.startUserKey() < rhs.startUserKey();
     }
     
-    bool operator()(const SliceVecRange& lhs, const Slice& rhs) const {
+    bool operator()(const PhysicalRange& lhs, const Slice& rhs) const {
         return lhs.startUserKey() < rhs;
     }
     
-    bool operator()(const Slice& lhs, const SliceVecRange& rhs) const {
+    bool operator()(const Slice& lhs, const PhysicalRange& rhs) const {
         return lhs < rhs.startUserKey();
     }
     
-    bool operator()(const SliceVecRange& lhs, const std::string& rhs) const {
+    bool operator()(const PhysicalRange& lhs, const std::string& rhs) const {
         return lhs.startUserKey() < Slice(rhs);
     }
     
-    bool operator()(const std::string& lhs, const SliceVecRange& rhs) const {
+    bool operator()(const std::string& lhs, const PhysicalRange& rhs) const {
         return Slice(lhs) < rhs.startUserKey();
     }
 };
 
 /**
- * RBTreeSliceVecRangeCache: A cache implementation using Red-Black Tree to store SliceVecRange data
+ * RBTreeLogicallyOrderedRangeCache: A cache implementation using Red-Black Tree to store PhysicalRange data
  * Uses ordered containers to maintain ranges sorted by their start keys and lengths
  */
-class RBTreeSliceVecRangeCache : public LogicallyOrderedSliceVecRangeCache {
+class RBTreeLogicallyOrderedRangeCache : public LogicallyOrderedRangeCache {
 public:
-    RBTreeSliceVecRangeCache(size_t capacity, bool enable_logger_ = false);
-    ~RBTreeSliceVecRangeCache() override;
+    RBTreeLogicallyOrderedRangeCache(size_t capacity, bool enable_logger_ = false);
+    ~RBTreeLogicallyOrderedRangeCache() override;
 
-    void putOverlappingRefRange(ReferringSliceVecRange&& newRefRange) override;
-    void putActualGapRange(ReferringSliceVecRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) override;
+    void putOverlappingRefRange(ReferringRange&& newRefRange) override;
+    void putActualGapRange(ReferringRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) override;
     bool updateEntry(const Slice& key, const Slice& value) override;
     void victim() override;
     void tryVictim() override;
     
-    SliceVecRangeCacheIterator* newSliceVecRangeCacheIterator(Arena* arena) const override;
+    LogicallyOrderedRangeCacheIterator* newLogicallyOrderedRangeCacheIterator(Arena* arena) const override;
 
     /**
-     * Update the timestamp of a SliceVecRange to mark it as recently used.
+     * Update the timestamp of a PhysicalRange to mark it as recently used.
      */
     void pinRange(std::string startKey);
 
@@ -71,8 +71,8 @@ public:
 private:
     size_t getLengthInRangeCache(const Slice& start_key, const Slice& end_key, size_t remaining_length) const;
 
-    friend class RBTreeSliceVecRangeCacheIterator;
-    std::set<SliceVecRange, SliceVecRangeComparator> orderedRanges;     // Container for ranges sorted by start key
+    friend class RBTreeLogicallyOrderedRangeCacheIterator;
+    std::set<PhysicalRange, PhysicalRangeComparator> orderedRanges;     // Container for ranges sorted by start key
     std::multimap<int, std::string> lengthMap;  // Container for ranges sorted by length (for victim selection)
     uint64_t cache_timestamp;          // Timestamp for LRU-like functionality
     mutable std::shared_mutex cache_mutex_;

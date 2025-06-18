@@ -1,23 +1,23 @@
-#include "rocksdb/rbtree_vec_lorc_iter.h"
-#include "rocksdb/rbtree_vec_lorc.h"
-#include "rocksdb/vec_lorc_iter.h"
+#include "rocksdb/rbtree_lorc_iter.h"
+#include "rocksdb/rbtree_lorc.h"
+#include "rocksdb/lorc_iter.h"
 #include <shared_mutex>
 
 namespace ROCKSDB_NAMESPACE {
 
-RBTreeSliceVecRangeCacheIterator::~RBTreeSliceVecRangeCacheIterator() {
+RBTreeLogicallyOrderedRangeCacheIterator::~RBTreeLogicallyOrderedRangeCacheIterator() {
     
 }
 
-RBTreeSliceVecRangeCacheIterator::RBTreeSliceVecRangeCacheIterator(const RBTreeSliceVecRangeCache* cache_)
+RBTreeLogicallyOrderedRangeCacheIterator::RBTreeLogicallyOrderedRangeCacheIterator(const RBTreeLogicallyOrderedRangeCache* cache_)
     : cache(cache_), current_index(-1), iter_status(Status()), valid(false) {}
 
-bool RBTreeSliceVecRangeCacheIterator::Valid() const {
+bool RBTreeLogicallyOrderedRangeCacheIterator::Valid() const {
     std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
     return valid && iter_status.ok();
 }
 
-bool RBTreeSliceVecRangeCacheIterator::HasNextInRange() const {
+bool RBTreeLogicallyOrderedRangeCacheIterator::HasNextInRange() const {
     std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
     if (!valid) {
         return false;
@@ -25,7 +25,7 @@ bool RBTreeSliceVecRangeCacheIterator::HasNextInRange() const {
     return (size_t)current_index + 1 < current_range->length();
 }
 
-void RBTreeSliceVecRangeCacheIterator::SeekToFirst() {
+void RBTreeLogicallyOrderedRangeCacheIterator::SeekToFirst() {
     std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
     if (!cache) {
         valid = false;
@@ -40,7 +40,7 @@ void RBTreeSliceVecRangeCacheIterator::SeekToFirst() {
     }
 }
 
-void RBTreeSliceVecRangeCacheIterator::SeekToLast() {
+void RBTreeLogicallyOrderedRangeCacheIterator::SeekToLast() {
     std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
     if (!cache) {
         valid = false;
@@ -55,14 +55,14 @@ void RBTreeSliceVecRangeCacheIterator::SeekToLast() {
     valid = true;
 }
 
-void RBTreeSliceVecRangeCacheIterator::Seek(const Slice& target_internal_key) {
+void RBTreeLogicallyOrderedRangeCacheIterator::Seek(const Slice& target_internal_key) {
     std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
     if (!cache) {
         valid = false;
         return;
     }
-    assert(target_internal_key.size() > SliceVecRange::internal_key_extra_bytes);
-    Slice target_user_key = Slice(target_internal_key.data(), target_internal_key.size() - SliceVecRange::internal_key_extra_bytes);
+    assert(target_internal_key.size() > PhysicalRange::internal_key_extra_bytes);
+    Slice target_user_key = Slice(target_internal_key.data(), target_internal_key.size() - PhysicalRange::internal_key_extra_bytes);
     current_range = cache->orderedRanges.upper_bound(target_user_key); // startKey > target
     if (current_range != cache->orderedRanges.begin()) {
         --current_range;
@@ -84,14 +84,14 @@ void RBTreeSliceVecRangeCacheIterator::Seek(const Slice& target_internal_key) {
     }
 }
 
-void RBTreeSliceVecRangeCacheIterator::SeekForPrev(const Slice& target_internal_key) {
+void RBTreeLogicallyOrderedRangeCacheIterator::SeekForPrev(const Slice& target_internal_key) {
     std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
     if (!cache) {
         valid = false;
         return;
     }
-    assert(target_internal_key.size() > SliceVecRange::internal_key_extra_bytes);
-    Slice target_user_key = Slice(target_internal_key.data(), target_internal_key.size() - SliceVecRange::internal_key_extra_bytes);
+    assert(target_internal_key.size() > PhysicalRange::internal_key_extra_bytes);
+    Slice target_user_key = Slice(target_internal_key.data(), target_internal_key.size() - PhysicalRange::internal_key_extra_bytes);
     current_range = cache->orderedRanges.upper_bound(target_user_key);
     if (current_range != cache->orderedRanges.begin()) {
         --current_range;
@@ -108,7 +108,7 @@ void RBTreeSliceVecRangeCacheIterator::SeekForPrev(const Slice& target_internal_
     }
 }
 
-void RBTreeSliceVecRangeCacheIterator::Next() {
+void RBTreeLogicallyOrderedRangeCacheIterator::Next() {
     std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
     if (!valid) {
         return;
@@ -126,7 +126,7 @@ void RBTreeSliceVecRangeCacheIterator::Next() {
     }
 }
 
-void RBTreeSliceVecRangeCacheIterator::Prev() {
+void RBTreeLogicallyOrderedRangeCacheIterator::Prev() {
     std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
     if (!valid) {
         return;
@@ -144,7 +144,7 @@ void RBTreeSliceVecRangeCacheIterator::Prev() {
     }
 }
 
-Slice RBTreeSliceVecRangeCacheIterator::key() const {
+Slice RBTreeLogicallyOrderedRangeCacheIterator::key() const {
     std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
     static std::string empty_string;
     if (!valid) {
@@ -153,7 +153,7 @@ Slice RBTreeSliceVecRangeCacheIterator::key() const {
     return current_range->internalKeyAt(current_index);
 }
 
-Slice RBTreeSliceVecRangeCacheIterator::userKey() const {
+Slice RBTreeLogicallyOrderedRangeCacheIterator::userKey() const {
     std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
     static std::string empty_string;
     if (!valid) {
@@ -162,7 +162,7 @@ Slice RBTreeSliceVecRangeCacheIterator::userKey() const {
     return current_range->userKeyAt(current_index);
 }
 
-Slice RBTreeSliceVecRangeCacheIterator::value() const {
+Slice RBTreeLogicallyOrderedRangeCacheIterator::value() const {
     std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
     static std::string empty_string;
     if (!valid) {
@@ -171,7 +171,7 @@ Slice RBTreeSliceVecRangeCacheIterator::value() const {
     return current_range->valueAt(current_index);
 }
 
-Status RBTreeSliceVecRangeCacheIterator::status() const {
+Status RBTreeLogicallyOrderedRangeCacheIterator::status() const {
     std::shared_lock<std::shared_mutex> lock(cache->cache_mutex_);
     return this->iter_status;
 }

@@ -14,7 +14,7 @@
 #include "rocksdb/compression_type.h"
 #include "rocksdb/memtablerep.h"
 #include "rocksdb/universal_compaction.h"
-#include "rocksdb/vec_lorc.h"
+#include "rocksdb/lorc.h"
 
 namespace ROCKSDB_NAMESPACE {
 
@@ -1118,7 +1118,7 @@ struct AdvancedColumnFamilyOptions {
   // It's a logical cache, not a physical one. Access needs an iterator between (imm)memtables and L0+ files.
   //
   // Default: nullptr (disabled)
-  std::shared_ptr<LogicallyOrderedSliceVecRangeCache> range_cache = nullptr;
+  std::shared_ptr<LogicallyOrderedRangeCache> range_cache = nullptr;
 
   // ---------------- OPTIONS NOT SUPPORTED ANYMORE ----------------
 };

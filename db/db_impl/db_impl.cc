@@ -91,8 +91,8 @@
 #include "rocksdb/table.h"
 #include "rocksdb/version.h"
 #include "rocksdb/write_buffer_manager.h"
-#include "rocksdb/vec_lorc_iter.h"
-#include "rocksdb/ref_vec_range.h"
+#include "rocksdb/lorc_iter.h"
+#include "rocksdb/ref_range.h"
 #include "table/block_based/block.h"
 #include "table/block_based/block_based_table_factory.h"
 #include "table/get_context.h"
@@ -2097,7 +2097,7 @@ InternalIterator* DBImpl::NewInternalIterator(
   // Range cache iterator between immutable memtables and L0
   if (s.ok() && super_version->range_cache != nullptr 
       && (read_options.read_tier == kMemtableAndRangeCacheTier || read_options.read_tier == kWithRangeCacheTier)) {
-    SliceVecRangeCacheIterator* range_cache_iter = super_version->range_cache->newSliceVecRangeCacheIterator(arena);
+    LogicallyOrderedRangeCacheIterator* range_cache_iter = super_version->range_cache->newLogicallyOrderedRangeCacheIterator(arena);
     merge_iter_builder.AddIterator(range_cache_iter);
   }
 
@@ -2367,7 +2367,7 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
     }
 
     // ref range for the gap range not in range cache
-    ReferringSliceVecRange ref_slice_vec_range(true, seq_num);
+    ReferringRange ref_range(true, seq_num);
     bool concatRightRangeInCache = false; // indicates that the right range of the current range should be concatenated with ranges in range cache
     for (; it->Valid(); it->Next()) {
       if (!range.isLeftIncluded() && !range_start_key.empty() && it->key() == range_start_key) {
@@ -2390,7 +2390,7 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
         // fill the gap range (with an extra copy for each key-value pair)
         // use kTypeRangeCacheValue as the value type for internal keys of range cache
         std::string internal_key_str = InternalKey(it->key(), seq_num, kTypeRangeCacheValue).Encode().ToString();
-        ref_slice_vec_range.emplace(Slice(keys->back()), Slice(values->back()));
+        ref_range.emplace(Slice(keys->back()), Slice(values->back()));
       }
 
       count++;
@@ -2407,12 +2407,12 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
 
     if (lorc && !in_range_cache) {
       // try to put non-hit range to range cache
-      if (ref_slice_vec_range.isValid() && ref_slice_vec_range.length() > 0) {
+      if (ref_range.isValid() && ref_range.length() > 0) {
         // not included in non-hit ranges indicates that the range should be concatenated with ranges in range cache on the corresponding side
-        lorc->putActualGapRange(std::move(ref_slice_vec_range), !range.isLeftIncluded(), concatRightRangeInCache, false, "", "");
-      } else if (ref_slice_vec_range.isValid() && ref_slice_vec_range.length() == 0 && !range.isLeftIncluded() && concatRightRangeInCache) {
+        lorc->putActualGapRange(std::move(ref_range), !range.isLeftIncluded(), concatRightRangeInCache, false, "", "");
+      } else if (ref_range.isValid() && ref_range.length() == 0 && !range.isLeftIncluded() && concatRightRangeInCache) {
         // put the empty gap to concat adjacent ranges in range cache
-        lorc->putActualGapRange(std::move(ref_slice_vec_range), true, true, true, range_start_key.ToString(), range_end_key.ToString());
+        lorc->putActualGapRange(std::move(ref_range), true, true, true, range_start_key.ToString(), range_end_key.ToString());
       }
     }
   }
@@ -2437,8 +2437,8 @@ Status DBImpl::ScanWithIteratorInternal(const ReadOptions& _read_options,
     _read_options.read_tier = kWithRangeCacheTier; // iterator merges all levels including range cache
   }
   const Snapshot* snapshot = _read_options.snapshot ? _read_options.snapshot : this->GetSnapshot();
-  ReferringSliceVecRange ref_slice_vec_range(true, snapshot->GetSequenceNumber());
-  // ReferringSliceVecRange ref_slice_vec_range(true, kMaxSequenceNumber);
+  ReferringRange ref_range(true, snapshot->GetSequenceNumber());
+  // ReferringRange ref_range(true, kMaxSequenceNumber);
 
   Iterator* it = this->NewIterator(_read_options, column_family);
   if (start_key.empty()) {
@@ -2451,7 +2451,7 @@ Status DBImpl::ScanWithIteratorInternal(const ReadOptions& _read_options,
     keys->reserve(len);
     values->reserve(len);
     if (lorc) {
-      ref_slice_vec_range.reserve(len);
+      ref_range.reserve(len);
     }
   }
 
@@ -2460,7 +2460,7 @@ Status DBImpl::ScanWithIteratorInternal(const ReadOptions& _read_options,
     keys->emplace_back(it->key().ToString());
     values->emplace_back(it->value().ToString());
     if (lorc) {
-      ref_slice_vec_range.emplace(Slice(keys->back()), Slice(values->back()));
+      ref_range.emplace(Slice(keys->back()), Slice(values->back()));
     }
 
     count++;
@@ -2474,7 +2474,7 @@ Status DBImpl::ScanWithIteratorInternal(const ReadOptions& _read_options,
 
   if (lorc) {
     // try to put non-hit ranges to range cache
-    lorc->putOverlappingRefRange(std::move(ref_slice_vec_range));
+    lorc->putOverlappingRefRange(std::move(ref_range));
   }
   return Status();
 }

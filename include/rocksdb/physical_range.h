@@ -3,17 +3,17 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include "rocksdb/ref_vec_range.h"
+#include "rocksdb/ref_range.h"
 #include "rocksdb/slice.h"
 
 namespace ROCKSDB_NAMESPACE {
 
 /**
- * @brief SliceVecRange class represents a sorted key-value SliceVecRange in memory
- * It supports SliceVecRange operations like subrange and concatenation
+ * @brief PhysicalRange class represents a sorted key-value PhysicalRange in memory
+ * It supports PhysicalRange operations like subrange and concatenation
  * with optimized memory management using shared_ptr
  */
-class SliceVecRange {
+class PhysicalRange {
 private:
     struct RangeData {
         // Continuous storage for keys and values
@@ -45,35 +45,35 @@ private:
     mutable int timestamp;
 
 private:
-    SliceVecRange(std::shared_ptr<RangeData> data, size_t length);
+    PhysicalRange(std::shared_ptr<RangeData> data, size_t length);
     
     // Helper functions for continuous storage management
-    void initializeFromReferringRange(const ReferringSliceVecRange& refRange);
-    void initializeFromReferringRangeSubset(const ReferringSliceVecRange& refRange, int start_pos, int end_pos);
+    void initializeFromReferringRange(const ReferringRange& refRange);
+    void initializeFromReferringRangeSubset(const ReferringRange& refRange, int start_pos, int end_pos);
     void emplaceInternal(const Slice& internal_key, const Slice& value, size_t index);
     void updateValueAt(size_t index, const Slice& new_value) const;
     void rebuildSlices() const;
     void rebuildSlicesAt(size_t index) const;
 
 public:
-    SliceVecRange(bool valid = false);
-    ~SliceVecRange();      
+    PhysicalRange(bool valid = false);
+    ~PhysicalRange();      
     // create from string vector
-    // DEPRECATED: create a SliceVecRange with a single key-value pair, used for seekx
-    // SliceVecRange(Slice startUserKey);
+    // DEPRECATED: create a PhysicalRange with a single key-value pair, used for seekx
+    // PhysicalRange(Slice startUserKey);
     // deep copy
-    SliceVecRange(const SliceVecRange& other);
+    PhysicalRange(const PhysicalRange& other);
     // move copy
-    SliceVecRange(SliceVecRange&& other) noexcept;
-    SliceVecRange& operator=(const SliceVecRange& other);
-    SliceVecRange& operator=(SliceVecRange&& other) noexcept;
+    PhysicalRange(PhysicalRange&& other) noexcept;
+    PhysicalRange& operator=(const PhysicalRange& other);
+    PhysicalRange& operator=(PhysicalRange&& other) noexcept;
 
-    // build a SliceVecRange from ReferringSliceVecRange
-    static SliceVecRange buildFromReferringSliceVecRange(const ReferringSliceVecRange& refRange);
+    // build a PhysicalRange from ReferringRange
+    static PhysicalRange buildFromReferringRange(const ReferringRange& refRange);
 
-    // materialize the subrange (startKey, endKey)  to SliceVecRange
+    // materialize the subrange (startKey, endKey)  to PhysicalRange
     // it's ensured that this->startKey() <= startKey <= endKey <= this->endKey()
-    static SliceVecRange dumpSubRangeFromReferringSliceVecRange(const ReferringSliceVecRange& refRange, const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded);
+    static PhysicalRange dumpSubRangeFromReferringRange(const ReferringRange& refRange, const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded);
 
     // reserve the range
     void reserve(size_t len);
@@ -104,10 +104,10 @@ public:
     static std::string ToStringPlain(std::string s);
 
     // DEPRECATED: Merge ordered and non-overlapping ranges without deep copy
-    // static SliceVecRange concatRangesMoved(std::vector<SliceVecRange>& ranges);
+    // static PhysicalRange concatRangesMoved(std::vector<PhysicalRange>& ranges);
 
     // Define comparison operator, sort by startUserKey in ascending order
-    bool operator<(const SliceVecRange& other) const {
+    bool operator<(const PhysicalRange& other) const {
         return startUserKey() < other.startUserKey();
     }
 

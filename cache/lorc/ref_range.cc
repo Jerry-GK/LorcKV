@@ -6,13 +6,13 @@
 #include <queue>
 #include <functional>
 #include <atomic>
-#include "rocksdb/ref_vec_range.h"
+#include "rocksdb/ref_range.h"
 #include "db/dbformat.h"
 
 namespace ROCKSDB_NAMESPACE {
 
 // Only for debug (internal keys)
-std::string ReferringSliceVecRange::ToStringPlain(std::string s) {
+std::string ReferringRange::ToStringPlain(std::string s) {
     std::string result;
     result.reserve(s.size());
     for (size_t i = 0; i < s.size(); ++i) {
@@ -29,7 +29,7 @@ std::string ReferringSliceVecRange::ToStringPlain(std::string s) {
     return result;
 }
 
-ReferringSliceVecRange::ReferringSliceVecRange(bool valid_, SequenceNumber seq_num_) {
+ReferringRange::ReferringRange(bool valid_, SequenceNumber seq_num_) {
     this->slice_data = std::make_shared<SliceRangeData>();
     this->valid = valid_;
     this->seq_num = seq_num_;
@@ -41,12 +41,12 @@ ReferringSliceVecRange::ReferringSliceVecRange(bool valid_, SequenceNumber seq_n
     }
 }
 
-ReferringSliceVecRange::~ReferringSliceVecRange() {
+ReferringRange::~ReferringRange() {
     slice_data.reset();
 }
 
-ReferringSliceVecRange::ReferringSliceVecRange(const ReferringSliceVecRange& other) {
-    // assert(false); // (it should not be called in RBTreeReferringSliceVecRangeCache)
+ReferringRange::ReferringRange(const ReferringRange& other) {
+    // assert(false); // (it should not be called in RBTreeReferringLogicallyOrderedRangeCache)
     this->valid = other.valid;
     this->seq_num = other.seq_num;
     this->range_length = other.range_length;
@@ -60,7 +60,7 @@ ReferringSliceVecRange::ReferringSliceVecRange(const ReferringSliceVecRange& oth
     }
 }
 
-ReferringSliceVecRange::ReferringSliceVecRange(ReferringSliceVecRange&& other) noexcept {
+ReferringRange::ReferringRange(ReferringRange&& other) noexcept {
     slice_data = std::move(other.slice_data);
     valid = other.valid;
     seq_num = other.seq_num;
@@ -72,8 +72,8 @@ ReferringSliceVecRange::ReferringSliceVecRange(ReferringSliceVecRange&& other) n
     other.range_length = 0;
 }
 
-ReferringSliceVecRange& ReferringSliceVecRange::operator=(const ReferringSliceVecRange& other) {
-    // RBTreeReferringSliceVecRangeCache should never call this
+ReferringRange& ReferringRange::operator=(const ReferringRange& other) {
+    // RBTreeReferringLogicallyOrderedRangeCache should never call this
     // assert(false);
     if (this != &other) {
         this->valid = other.valid;
@@ -93,7 +93,7 @@ ReferringSliceVecRange& ReferringSliceVecRange::operator=(const ReferringSliceVe
     return *this;
 }
 
-ReferringSliceVecRange& ReferringSliceVecRange::operator=(ReferringSliceVecRange&& other) noexcept {
+ReferringRange& ReferringRange::operator=(ReferringRange&& other) noexcept {
     if (this != &other) {
         // Clean up current object's resources
         slice_data.reset();
@@ -116,47 +116,47 @@ ReferringSliceVecRange& ReferringSliceVecRange::operator=(ReferringSliceVecRange
     return *this;
 }
 
-Slice ReferringSliceVecRange::startKey() const {
+Slice ReferringRange::startKey() const {
     assert(valid && range_length > 0 && slice_data->slice_keys.size() > 0);
     return Slice(slice_data->slice_keys[0]);
 }
 
-Slice  ReferringSliceVecRange::endKey() const {
+Slice  ReferringRange::endKey() const {
     assert(valid && range_length > 0 && slice_data->slice_keys.size() > 0);
     return Slice(slice_data->slice_keys[range_length - 1]);
 }   
 
-Slice ReferringSliceVecRange::keyAt(size_t index) const {
+Slice ReferringRange::keyAt(size_t index) const {
     assert(valid && range_length > index);
     return Slice(slice_data->slice_keys[index]);
 }
 
-Slice ReferringSliceVecRange::valueAt(size_t index) const {
+Slice ReferringRange::valueAt(size_t index) const {
     assert(valid && range_length > index);
     return Slice(slice_data->slice_values[index]);
 }
 
-size_t ReferringSliceVecRange::length() const {
+size_t ReferringRange::length() const {
     return range_length;
 }   
 
-size_t ReferringSliceVecRange::keysByteSize() const {
+size_t ReferringRange::keysByteSize() const {
     return keys_byte_size;
 }
 
-size_t ReferringSliceVecRange::valuesByteSize() const {
+size_t ReferringRange::valuesByteSize() const {
     return values_byte_size;
 }
 
-bool ReferringSliceVecRange::isValid() const {
+bool ReferringRange::isValid() const {
     return valid;
 }
 
-SequenceNumber ReferringSliceVecRange::getSeqNum() const {
+SequenceNumber ReferringRange::getSeqNum() const {
     return seq_num;
 }
 
-int ReferringSliceVecRange::find(const Slice& key) const {
+int ReferringRange::find(const Slice& key) const {
     assert(valid && range_length > 0);
     if (!valid || range_length == 0) {
         return -1;
@@ -183,18 +183,18 @@ int ReferringSliceVecRange::find(const Slice& key) const {
     return left;
 }
 
-std::string ReferringSliceVecRange::toString() const {
+std::string ReferringRange::toString() const {
     std::string str = "< " + ToStringPlain(this->startKey().ToString()) + " -> " + ToStringPlain(this->endKey().ToString()) + " >";
     return str;
 }
 
-void ReferringSliceVecRange::reserve(size_t len) {
+void ReferringRange::reserve(size_t len) {
     assert(valid);
     slice_data->slice_keys.reserve(len);
     slice_data->slice_values.reserve(len);
 }
 
-void ReferringSliceVecRange::emplace(const Slice& key, const Slice& value) {
+void ReferringRange::emplace(const Slice& key, const Slice& value) {
     assert(valid);
     slice_data->slice_keys.emplace_back(key);
     slice_data->slice_values.emplace_back(value);

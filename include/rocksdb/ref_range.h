@@ -9,13 +9,13 @@
 namespace ROCKSDB_NAMESPACE {
 
 /**
- * @brief ReferringSliceVecRange class is a range representation of key-value pairs, which inner storage
+ * @brief ReferringRange class is a range representation of key-value pairs, which inner storage
  * is slice which refers to the original data. 
- * Diffenrent from SliceVecRange, it doesn't own the data. So building a ReferringSliceVecRange does not need data copy.
+ * Diffenrent from PhysicalRange, it doesn't own the data. So building a ReferringRange does not need data copy.
  * It's only used for generating a range view during range query for LORC to put range.
- * Slices of non-overlapping subranges will called ToString() to dump to SliceVecRange and called SliceVecRange::concatRangesMoved() to merge.
+ * Slices of non-overlapping subranges will called ToString() to dump to PhysicalRange and called PhysicalRange::concatRangesMoved() to merge.
  */
-class ReferringSliceVecRange {
+class ReferringRange {
 private:
     struct SliceRangeData {
         std::vector<Slice> slice_keys;  // user keys, dump with seq_num to internal keys in dumpSubRange()
@@ -29,15 +29,15 @@ private:
     mutable SequenceNumber seq_num;
 
 public:
-    ReferringSliceVecRange(bool valid_, SequenceNumber seq_num_);
-    ~ReferringSliceVecRange();      
+    ReferringRange(bool valid_, SequenceNumber seq_num_);
+    ~ReferringRange();      
     // create from string vector
     // deep copy
-    ReferringSliceVecRange(const ReferringSliceVecRange& other);
+    ReferringRange(const ReferringRange& other);
     // move copy
-    ReferringSliceVecRange(ReferringSliceVecRange&& other) noexcept;
-    ReferringSliceVecRange& operator=(const ReferringSliceVecRange& other);
-    ReferringSliceVecRange& operator=(ReferringSliceVecRange&& other) noexcept;
+    ReferringRange(ReferringRange&& other) noexcept;
+    ReferringRange& operator=(const ReferringRange& other);
+    ReferringRange& operator=(ReferringRange&& other) noexcept;
 
     // reserve the range
     void reserve(size_t len);

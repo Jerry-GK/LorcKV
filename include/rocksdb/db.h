@@ -30,7 +30,7 @@
 #include "rocksdb/types.h"
 #include "rocksdb/user_write_callback.h"
 #include "rocksdb/utilities/table_properties_collectors.h"
-#include "rocksdb/vec_lorc.h"
+#include "rocksdb/lorc.h"
 #include "rocksdb/version.h"
 #include "rocksdb/wide_columns.h"
 
@@ -94,7 +94,7 @@ class ColumnFamilyHandle {
   virtual const Comparator* GetComparator() const = 0;
 
   // Return the range cache of corresponding column family.
-  virtual std::shared_ptr<LogicallyOrderedSliceVecRangeCache> GetRangeCache() const {
+  virtual std::shared_ptr<LogicallyOrderedRangeCache> GetRangeCache() const {
     assert(false);
     return nullptr;
   }
