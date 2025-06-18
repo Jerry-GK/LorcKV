@@ -23,6 +23,8 @@ private:
     };
     std::shared_ptr<SliceRangeData> slice_data;
     mutable size_t range_length; // size in length
+    mutable size_t keys_byte_size; // size in bytes (key size virtually expanded to internal key size)
+    mutable size_t values_byte_size; // size in bytes (value size)
     mutable bool valid;
     mutable SequenceNumber seq_num;
 
@@ -50,6 +52,8 @@ public:
     Slice valueAt(size_t index) const;
 
     size_t length() const;
+    size_t keysByteSize() const;
+    size_t valuesByteSize() const;
     bool isValid() const;
 
     SequenceNumber getSeqNum() const;

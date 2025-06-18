@@ -37,6 +37,8 @@ SliceVecRange::SliceVecRange(bool valid_) {
     this->timestamp = 0;
     if (valid) {
         data = std::make_shared<RangeData>();
+        data->keys_buffer_size = 0;
+        data->values_buffer_size = 0;
     }
 }
 
@@ -46,7 +48,6 @@ SliceVecRange::~SliceVecRange() {
 }
 
 SliceVecRange::SliceVecRange(const SliceVecRange& other) {
-    // assert(false); // (it should not be called in RBTreeSliceVecRangeCache)
     this->valid = other.valid;
     this->range_length = other.range_length;
     this->byte_size = other.byte_size;
@@ -54,13 +55,38 @@ SliceVecRange::SliceVecRange(const SliceVecRange& other) {
     
     if (other.valid && other.data) {
         this->data = std::make_shared<RangeData>();
-        this->data->internal_keys = other.data->internal_keys;
-        this->data->values = other.data->values;
-        for (size_t i = 0; i < this->range_length; i++) {
-            this->data->internal_key_slices.emplace_back(this->data->internal_keys[i].data(), this->data->internal_keys[i].size() - internal_key_extra_bytes);
-            this->data->user_key_slices.emplace_back(this->data->internal_keys[i].data(), this->data->internal_keys[i].size() - internal_key_extra_bytes);
-            this->data->value_slices.emplace_back(this->data->values[i]);
+        
+        // Copy continuous buffers
+        if (other.data->keys_buffer_size > 0) {
+            this->data->keys_buffer = std::make_unique<char[]>(other.data->keys_buffer_size);
+            memcpy(this->data->keys_buffer.get(), other.data->keys_buffer.get(), other.data->keys_buffer_size);
+            this->data->keys_buffer_size = other.data->keys_buffer_size;
         }
+        
+        if (other.data->values_buffer_size > 0) {
+            this->data->values_buffer = std::make_unique<char[]>(other.data->values_buffer_size);
+            memcpy(this->data->values_buffer.get(), other.data->values_buffer.get(), other.data->values_buffer_size);
+            this->data->values_buffer_size = other.data->values_buffer_size;
+        }
+        
+        // Copy offset and size arrays
+        this->data->key_offsets = other.data->key_offsets;
+        this->data->key_sizes = other.data->key_sizes;
+        this->data->value_offsets = other.data->value_offsets;
+        this->data->value_sizes = other.data->value_sizes;
+        this->data->original_value_sizes = other.data->original_value_sizes;
+        this->data->is_overflow = other.data->is_overflow;
+        
+        // Copy overflow values
+        this->data->overflow_values.resize(other.data->overflow_values.size());
+        for (size_t i = 0; i < other.data->overflow_values.size(); i++) {
+            if (other.data->overflow_values[i]) {
+                this->data->overflow_values[i] = std::make_unique<std::string>(*other.data->overflow_values[i]);
+            }
+        }
+        
+        // Rebuild slices
+        rebuildSlices();
     }
 }
 
@@ -88,7 +114,7 @@ SliceVecRange::SliceVecRange(SliceVecRange&& other) noexcept {
 // DEPRECATED: used to generate a temp range to compare
 // SliceVecRange::SliceVecRange(Slice startUserKey) {
 //     data = std::make_shared<RangeData>();
-//     data->internal_keys.push_back(startUserKey.ToString());
+//     data->internal_keys.emplace_back(startUserKey.ToString());
 //     data->internal_keys[0].append(internal_key_extra_bytes, '\0');
 //     this->valid = true;
 //     this->range_length = 1;
@@ -100,18 +126,15 @@ SliceVecRange::SliceVecRange(std::shared_ptr<RangeData> data_, size_t range_leng
     this->data = data_;
     this->valid = true;
     this->range_length = range_length_;
-    // TODO(jr): avoid calculating byte_size in the constructor
     this->byte_size = 0;
     for (size_t i = 0; i < range_length_; i++) {
-        this->byte_size += data_->internal_keys[i].size();
-        this->byte_size += data_->values[i].size();
+        this->byte_size += data_->key_sizes[i];
+        this->byte_size += data_->value_sizes[i];
     }
     this->timestamp = 0;
 }
 
 SliceVecRange& SliceVecRange::operator=(const SliceVecRange& other) {
-    // RBTreeSliceVecRangeCache should never call this
-    // assert(false);
     if (this != &other) {
         this->valid = other.valid;
         this->range_length = other.range_length;
@@ -120,13 +143,38 @@ SliceVecRange& SliceVecRange::operator=(const SliceVecRange& other) {
         
         if (other.valid && other.data) {
             this->data = std::make_shared<RangeData>();
-            this->data->internal_keys = other.data->internal_keys;
-            this->data->values = other.data->values;
-            for (size_t i = 0; i < this->range_length; i++) {
-                this->data->internal_key_slices.emplace_back(this->data->internal_keys[i].data(), this->data->internal_keys[i].size() - internal_key_extra_bytes);
-                this->data->user_key_slices.emplace_back(this->data->internal_keys[i].data(), this->data->internal_keys[i].size() - internal_key_extra_bytes);
-                this->data->value_slices.emplace_back(this->data->values[i]);
+            
+            // Copy continuous buffers
+            if (other.data->keys_buffer_size > 0) {
+                this->data->keys_buffer = std::make_unique<char[]>(other.data->keys_buffer_size);
+                memcpy(this->data->keys_buffer.get(), other.data->keys_buffer.get(), other.data->keys_buffer_size);
+                this->data->keys_buffer_size = other.data->keys_buffer_size;
             }
+            
+            if (other.data->values_buffer_size > 0) {
+                this->data->values_buffer = std::make_unique<char[]>(other.data->values_buffer_size);
+                memcpy(this->data->values_buffer.get(), other.data->values_buffer.get(), other.data->values_buffer_size);
+                this->data->values_buffer_size = other.data->values_buffer_size;
+            }
+            
+            // Copy offset and size arrays
+            this->data->key_offsets = other.data->key_offsets;
+            this->data->key_sizes = other.data->key_sizes;
+            this->data->value_offsets = other.data->value_offsets;
+            this->data->value_sizes = other.data->value_sizes;
+            this->data->original_value_sizes = other.data->original_value_sizes;
+            this->data->is_overflow = other.data->is_overflow;
+            
+            // Copy overflow values
+            this->data->overflow_values.resize(other.data->overflow_values.size());
+            for (size_t i = 0; i < other.data->overflow_values.size(); i++) {
+                if (other.data->overflow_values[i]) {
+                    this->data->overflow_values[i] = std::make_unique<std::string>(*other.data->overflow_values[i]);
+                }
+            }
+            
+            // Rebuild slices
+            rebuildSlices();
         } else {
             this->data.reset();
         }
@@ -156,14 +204,18 @@ SliceVecRange& SliceVecRange::operator=(SliceVecRange&& other) noexcept {
 
 SliceVecRange SliceVecRange::buildFromReferringSliceVecRange(const ReferringSliceVecRange& refRange) {
     SliceVecRange newRange(true);
-    newRange.reserve(refRange.length());
+    newRange.initializeFromReferringRange(refRange);
     
     for (size_t i = 0; i < refRange.length(); i++) {
         Slice internal_key = refRange.keyAt(i);
         std::string internal_key_str = InternalKey(internal_key, refRange.getSeqNum(), kTypeRangeCacheValue).Encode().ToString();
         Slice value = refRange.valueAt(i);
-        newRange.emplace(Slice(internal_key_str), value);
+        newRange.emplaceInternal(Slice(internal_key_str), value, i);
     }
+    
+    newRange.range_length = refRange.length();
+    newRange.byte_size = refRange.keysByteSize() + refRange.valuesByteSize();
+    newRange.rebuildSlices();
     return newRange;
 }
 
@@ -202,57 +254,52 @@ SliceVecRange SliceVecRange::dumpSubRangeFromReferringSliceVecRange(const Referr
     
     SliceVecRange result(true);
     size_t num_elements = end_pos - start_pos + 1;
-    result.reserve(num_elements);
+    result.initializeFromReferringRangeSubset(refRange, start_pos, end_pos);
     
-    // actually copy the subrange data
+    result.byte_size = 0;
     for (int i = start_pos; i <= end_pos; i++) {
-        // use kTypeRangeCacheValue as the value type for internal keys of range cache
         std::string internal_key_str = InternalKey(refRange.keyAt(i), refRange.getSeqNum(), kTypeRangeCacheValue).Encode().ToString();
-        result.emplace(Slice(internal_key_str), refRange.valueAt(i));
+        result.emplaceInternal(Slice(internal_key_str), refRange.valueAt(i), i - start_pos);
+        result.byte_size += internal_key_str.size() + refRange.valueAt(i).size();
     }
     
+    result.range_length = num_elements;
+    result.rebuildSlices();
     return result;
 }
 
 const Slice& SliceVecRange::startUserKey() const {
-    assert(valid && range_length > 0 && data->internal_keys.size() > 0 && data->internal_keys[0].size() > internal_key_extra_bytes);
-    // return Slice(data->internal_keys[0].data(), data->internal_keys[0].size() - internal_key_extra_bytes);
+    assert(valid && range_length > 0 && data->key_sizes.size() > 0 && data->key_sizes[0] > internal_key_extra_bytes);
     return this->data->user_key_slices[0];
 }
 
 const Slice& SliceVecRange::endUserKey() const {
-    assert(valid && range_length > 0 && data->internal_keys.size() > 0 && data->internal_keys[range_length - 1].size() > internal_key_extra_bytes);
-    // return Slice(data->internal_keys[range_length - 1].data(), data->internal_keys[range_length - 1].size() - internal_key_extra_bytes);
+    assert(valid && range_length > 0 && data->key_sizes.size() > 0 && data->key_sizes[range_length - 1] > internal_key_extra_bytes);
     return this->data->user_key_slices[range_length - 1];
 }  
 
 const Slice& SliceVecRange::startInternalKey() const {
-    assert(valid && range_length > 0 && data->internal_keys.size() > 0);
-    // return Slice(data->internal_keys[0]);
+    assert(valid && range_length > 0 && data->key_sizes.size() > 0);
     return this->data->internal_key_slices[0];
 }
 
 const Slice& SliceVecRange::endInternalKey() const {
-    assert(valid && range_length > 0 && data->internal_keys.size() > 0);
-    // return Slice(data->internal_keys[range_length - 1]);
+    assert(valid && range_length > 0 && data->key_sizes.size() > 0);
     return this->data->internal_key_slices[range_length - 1];
 }   
 
 const Slice& SliceVecRange::internalKeyAt(size_t index) const {
     assert(valid && range_length > index);
-    // return Slice(data->internal_keys[index]);
     return this->data->internal_key_slices[index];
 }
 
 const Slice& SliceVecRange::userKeyAt(size_t index) const {
-    assert(valid && range_length > index && data->internal_keys[index].size() > internal_key_extra_bytes);
-    // return Slice(data->internal_keys[index].data(), data->internal_keys[index].size() - internal_key_extra_bytes);
+    assert(valid && range_length > index && data->key_sizes[index] > internal_key_extra_bytes);
     return this->data->user_key_slices[index];
 }
 
 const Slice& SliceVecRange::valueAt(size_t index) const {
     assert(valid && range_length > index);
-    // return Slice(data->values[index]);
     return this->data->value_slices[index];
 }
 
@@ -280,47 +327,30 @@ bool SliceVecRange::update(const Slice& internal_key, const Slice& value) const 
     assert(valid && range_length > 0 && internal_key.size() > internal_key_extra_bytes);    
     Slice user_key = Slice(internal_key.data(), internal_key.size() - SliceVecRange::internal_key_extra_bytes);
     int index = find(user_key);
-    // dont use internal_key for comparison (the last bit may be kTypeValue in Range Cache and kTypeBlobIndex in LSM)
+    
     if (index >= 0 && userKeyAt(index) == user_key) {
-        // update the sequence number of the internal key, the type is turned to kTypeRangeCacheValue
+        // Update sequence number in key (in-place since size doesn't change)
         ParsedInternalKey parsed_internal_key;
         Status s = ParseInternalKey(internal_key, &parsed_internal_key, false);
-        SequenceNumber seq_num = parsed_internal_key.sequence;
         if (!s.ok()) {
             return false;
         }
-        std::string new_internal_key_str = InternalKey(user_key, seq_num, kTypeRangeCacheValue).Encode().ToString();
-
-        ParsedInternalKey old_parsed_internal_key;
-        s = ParseInternalKey(Slice(data->internal_keys[index]), &old_parsed_internal_key, false);
-        if (!s.ok()) {
-            return false;
-        }
-        SequenceNumber old_seq_num = old_parsed_internal_key.sequence;
-
-        data->internal_keys[index] = new_internal_key_str;
         
-        // update the value
-        data->values[index] = value.ToString();
+        SequenceNumber seq_num = parsed_internal_key.sequence;
+        std::string new_internal_key_str = InternalKey(user_key, seq_num, kTypeRangeCacheValue).Encode().ToString();
+        
+        // Update key in continuous buffer (same size, so in-place)
+        memcpy(data->keys_buffer.get() + data->key_offsets[index], 
+               new_internal_key_str.data(), new_internal_key_str.size());
+        
+        // Update value
+        updateValueAt(index, value);
+        
+        // Rebuild affected slices
+        rebuildSlicesAt(index);
         return true;
     }
     return false;
-}
-
-void SliceVecRange::truncate(int targetLength) const {
-    assert(valid && range_length > 0 && data->internal_keys.size() > 0);
-    if (targetLength < 0 || (size_t)targetLength > range_length) {
-        assert(false);
-        return;
-    }
-    
-    data->internal_keys.resize(targetLength);
-    data->values.resize(targetLength);
-    range_length = targetLength;
-    byte_size = 0;
-    for (size_t i = 0; i < range_length; i++) {
-        byte_size += data->internal_keys[i].size();
-    }
 }
 
 int SliceVecRange::find(const Slice& key) const {
@@ -430,30 +460,122 @@ std::string SliceVecRange::toString() const {
 
 void SliceVecRange::reserve(size_t len) {
     assert(valid);
-    data->internal_keys.reserve(len);
-    data->values.reserve(len);
+    data->key_offsets.reserve(len);
+    data->key_sizes.reserve(len);
+    data->value_offsets.reserve(len);
+    data->value_sizes.reserve(len);
+    data->original_value_sizes.reserve(len);
+    data->is_overflow.reserve(len);
+    data->overflow_values.reserve(len);
     data->internal_key_slices.reserve(len);
     data->user_key_slices.reserve(len);
     data->value_slices.reserve(len);
 }
 
-void SliceVecRange::emplace(const Slice& internal_key, const Slice& value) {
-    assert(valid);
-    range_length++;
-    byte_size += internal_key.size() + value.size();
-    data->internal_keys.emplace_back(internal_key.data(), internal_key.size());
-    data->values.emplace_back(value.data(), value.size());
-    data->internal_key_slices.emplace_back(data->internal_keys.back().data(), data->internal_keys.back().size());
-    data->user_key_slices.emplace_back(data->internal_keys.back().data(), data->internal_keys.back().size() - internal_key_extra_bytes);
-    data->value_slices.emplace_back(data->values.back().data(), data->values.back().size());
+void SliceVecRange::initializeFromReferringRange(const ReferringSliceVecRange& refRange) {
+    size_t keys_total_size = refRange.keysByteSize();
+    size_t values_total_size = refRange.valuesByteSize();
+    
+    // Allocate continuous buffers
+    data->keys_buffer = std::make_unique<char[]>(keys_total_size);
+    data->values_buffer = std::make_unique<char[]>(values_total_size);
+    data->keys_buffer_size = keys_total_size;
+    data->values_buffer_size = values_total_size;
+    
+    // Reserve vectors
+    reserve(refRange.length());
 }
 
-// void SliceVecRange::emplaceMoved(std::string& internal_key, std::string& value) {
-//     assert(valid);
-//     data->internal_keys.emplace_back(std::move(internal_key));
-//     data->values.emplace_back(std::move(value));
-//     range_length++;
-//     byte_size += data->internal_keys.back().size() + data->values.back().size();
-// }
+void SliceVecRange::initializeFromReferringRangeSubset(const ReferringSliceVecRange& refRange, int start_pos, int end_pos) {
+    size_t num_elements = end_pos - start_pos + 1;
+    size_t keys_total_size = 0;
+    size_t values_total_size = 0;
+    
+    for (int i = start_pos; i <= end_pos; i++) {
+        keys_total_size += refRange.keyAt(i).size() + internal_key_extra_bytes;
+        values_total_size += refRange.valueAt(i).size();
+    }
+    
+    data->keys_buffer = std::make_unique<char[]>(keys_total_size);
+    data->values_buffer = std::make_unique<char[]>(values_total_size);
+    data->keys_buffer_size = keys_total_size;
+    data->values_buffer_size = values_total_size;
+    
+    reserve(num_elements);
+}
+
+void SliceVecRange::emplaceInternal(const Slice& internal_key, const Slice& value, size_t index) {
+    assert(valid);
+    // Calculate offsets
+    size_t key_offset = (index == 0) ? 0 : data->key_offsets[index - 1] + data->key_sizes[index - 1];
+    size_t value_offset = (index == 0) ? 0 : data->value_offsets[index - 1] + data->value_sizes[index - 1];
+    
+    // Store key
+    memcpy(data->keys_buffer.get() + key_offset, internal_key.data(), internal_key.size());
+    data->key_offsets.emplace_back(key_offset);
+    data->key_sizes.emplace_back(internal_key.size());
+    
+    // Store value
+    memcpy(data->values_buffer.get() + value_offset, value.data(), value.size());
+    data->value_offsets.emplace_back(value_offset);
+    data->value_sizes.emplace_back(value.size());
+    data->original_value_sizes.emplace_back(value.size()); // Record original size
+    data->is_overflow.emplace_back(false);
+    data->overflow_values.emplace_back(nullptr);
+}
+
+void SliceVecRange::updateValueAt(size_t index, const Slice& new_value) const {
+    size_t original_size = data->original_value_sizes[index]; // Use original size
+    
+    if (new_value.size() <= original_size) {
+        // Can fit in original space
+        if (data->is_overflow[index]) {
+            // Move back from overflow to continuous storage
+            data->overflow_values[index].reset();
+            data->is_overflow[index] = false;
+        }
+        
+        // Update in continuous buffer
+        memcpy(data->values_buffer.get() + data->value_offsets[index], 
+               new_value.data(), new_value.size());
+        data->value_sizes[index] = new_value.size();
+    } else {
+        // Need overflow storage
+        if (!data->is_overflow[index]) {
+            data->overflow_values[index] = std::make_unique<std::string>();
+            data->is_overflow[index] = true;
+        }
+        *data->overflow_values[index] = new_value.ToString();
+        data->value_sizes[index] = new_value.size();
+    }
+}
+
+void SliceVecRange::rebuildSlices() const {
+    data->internal_key_slices.clear();
+    data->user_key_slices.clear();
+    data->value_slices.clear();
+    
+    for (size_t i = 0; i < range_length; i++) {
+        data->internal_key_slices.emplace_back(data->keys_buffer.get() + data->key_offsets[i], data->key_sizes[i]);
+        data->user_key_slices.emplace_back(data->keys_buffer.get() + data->key_offsets[i], data->key_sizes[i] - internal_key_extra_bytes);
+        
+        if (data->is_overflow[i]) {
+            data->value_slices.emplace_back(*data->overflow_values[i]);
+        } else {
+            data->value_slices.emplace_back(data->values_buffer.get() + data->value_offsets[i], data->value_sizes[i]);
+        }
+    }
+}
+
+void SliceVecRange::rebuildSlicesAt(size_t index) const {
+    data->internal_key_slices[index] = Slice(data->keys_buffer.get() + data->key_offsets[index], data->key_sizes[index]);
+    data->user_key_slices[index] = Slice(data->keys_buffer.get() + data->key_offsets[index], data->key_sizes[index] - internal_key_extra_bytes);
+    
+    if (data->is_overflow[index]) {
+        data->value_slices[index] = Slice(*data->overflow_values[index]);
+    } else {
+        data->value_slices[index] = Slice(data->values_buffer.get() + data->value_offsets[index], data->value_sizes[index]);
+    }
+}
 
 }  // namespace ROCKSDB_NAMESPACE

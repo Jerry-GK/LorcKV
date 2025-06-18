@@ -16,8 +16,24 @@ namespace ROCKSDB_NAMESPACE {
 class SliceVecRange {
 private:
     struct RangeData {
-        std::vector<std::string> internal_keys;  // internal keys actually, but internal seq number is not participated in comparasion
-        std::vector<std::string> values;
+        // Continuous storage for keys and values
+        std::unique_ptr<char[]> keys_buffer;
+        std::unique_ptr<char[]> values_buffer;
+        size_t keys_buffer_size;
+        size_t values_buffer_size;
+        
+        // Offset arrays to track position and size of each entry
+        std::vector<size_t> key_offsets;
+        std::vector<size_t> key_sizes;
+        std::vector<size_t> value_offsets;
+        std::vector<size_t> value_sizes;
+        std::vector<size_t> original_value_sizes; // Track original value sizes for overflow management
+        
+        // For values that exceed original size, store as separate strings
+        std::vector<std::unique_ptr<std::string>> overflow_values;
+        std::vector<bool> is_overflow; // Track which values are overflow
+        
+        // Slice vectors for fast access
         std::vector<Slice> internal_key_slices;
         std::vector<Slice> user_key_slices;
         std::vector<Slice> value_slices;
@@ -28,8 +44,16 @@ private:
     mutable bool valid;
     mutable int timestamp;
 
-    private:
+private:
     SliceVecRange(std::shared_ptr<RangeData> data, size_t length);
+    
+    // Helper functions for continuous storage management
+    void initializeFromReferringRange(const ReferringSliceVecRange& refRange);
+    void initializeFromReferringRangeSubset(const ReferringSliceVecRange& refRange, int start_pos, int end_pos);
+    void emplaceInternal(const Slice& internal_key, const Slice& value, size_t index);
+    void updateValueAt(size_t index, const Slice& new_value) const;
+    void rebuildSlices() const;
+    void rebuildSlicesAt(size_t index) const;
 
 public:
     SliceVecRange(bool valid = false);
@@ -54,12 +78,6 @@ public:
     // reserve the range
     void reserve(size_t len);
 
-    // empalce a key-value pair Slice copy
-    void emplace(const Slice& internal_key, const Slice& value);
-
-    // empalce a key-value pair string in a moved pattern
-    void emplaceMoved(std::string& internal_key, std::string& value);
-
     const Slice& startUserKey() const; // return in user key format slice, for range cache location
     const Slice& endUserKey() const; // return in user key format slice, for range cache location
 
@@ -77,9 +95,6 @@ public:
     void setTimestamp(int timestamp) const;
 
     bool update(const Slice& internal_key, const Slice& value) const;
-
-    // truncate in place
-    void truncate(int length) const;
 
     // return the first element index whose key is < greater than or equal > to key
     int find(const Slice& key) const;

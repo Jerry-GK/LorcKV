@@ -260,14 +260,16 @@ void RBTreeSliceVecRangeCache::victim() {
         auto it = orderedRanges.find(victimRangeStartKey);  // Direct heterogeneous lookup
         assert(it != orderedRanges.end() && it->startUserKey() == victimRangeStartKey);
         // Truncate the last remaining SliceVecRange
-        logger.debug("Truncate: " + it->toString());
-        lengthMap.erase(lengthMap.find(it->length()));
-        it->truncate(this->capacity);
-        lengthMap.emplace(it->length(), it->startUserKey().ToString());
-        this->current_size = it->byteSize();
-        this->total_range_length = it->length();
-        ranges_view.removeRange(victimRangeStartKey);
-        ranges_view.putLogicalRange(LogicalRange(it->startUserKey().ToString(), it->endUserKey().ToString(), it->length(), true, true, true), false, false);
+        logger.warn("Not victim the last range: " + it->toString());
+
+        // logger.debug("Truncate: " + it->toString());
+        // lengthMap.erase(lengthMap.find(it->length()));
+        // it->truncate(this->capacity);
+        // lengthMap.emplace(it->length(), it->startUserKey().ToString());
+        // this->current_size = it->byteSize();
+        // this->total_range_length = it->length();
+        // ranges_view.removeRange(victimRangeStartKey);
+        // ranges_view.putLogicalRange(LogicalRange(it->startUserKey().ToString(), it->endUserKey().ToString(), it->length(), true, true, true), false, false);
     }
 }
 

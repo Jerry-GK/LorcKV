@@ -34,6 +34,8 @@ ReferringSliceVecRange::ReferringSliceVecRange(bool valid_, SequenceNumber seq_n
     this->valid = valid_;
     this->seq_num = seq_num_;
     this->range_length = 0;
+    this->keys_byte_size = 0;
+    this->values_byte_size = 0;
     if (valid) {
         slice_data = std::make_shared<SliceRangeData>();
     }
@@ -48,6 +50,8 @@ ReferringSliceVecRange::ReferringSliceVecRange(const ReferringSliceVecRange& oth
     this->valid = other.valid;
     this->seq_num = other.seq_num;
     this->range_length = other.range_length;
+    this->keys_byte_size = other.keys_byte_size;
+    this->values_byte_size = other.values_byte_size;
     
     if (other.valid && other.slice_data) {
         this->slice_data = std::make_shared<SliceRangeData>();
@@ -61,6 +65,8 @@ ReferringSliceVecRange::ReferringSliceVecRange(ReferringSliceVecRange&& other) n
     valid = other.valid;
     seq_num = other.seq_num;
     range_length = other.range_length;
+    keys_byte_size = other.keys_byte_size;
+    values_byte_size = other.values_byte_size;
 
     other.valid = false;
     other.range_length = 0;
@@ -73,7 +79,9 @@ ReferringSliceVecRange& ReferringSliceVecRange::operator=(const ReferringSliceVe
         this->valid = other.valid;
         this->seq_num = other.seq_num;
         this->range_length = other.range_length;
-        
+        this->keys_byte_size = other.keys_byte_size;
+        this->values_byte_size = other.values_byte_size;
+
         if (other.valid && other.slice_data) {
             this->slice_data = std::make_shared<SliceRangeData>();
             this->slice_data->slice_keys = other.slice_data->slice_keys;
@@ -95,10 +103,15 @@ ReferringSliceVecRange& ReferringSliceVecRange::operator=(ReferringSliceVecRange
         valid = other.valid;
         seq_num = other.seq_num;
         range_length = other.range_length;
+        keys_byte_size = other.keys_byte_size;
+        values_byte_size = other.values_byte_size;
         
         // Reset other object's state
         other.valid = false;
         other.range_length = 0;
+        other.seq_num = 0;
+        other.keys_byte_size = 0;
+        other.values_byte_size = 0;
     }
     return *this;
 }
@@ -126,6 +139,14 @@ Slice ReferringSliceVecRange::valueAt(size_t index) const {
 size_t ReferringSliceVecRange::length() const {
     return range_length;
 }   
+
+size_t ReferringSliceVecRange::keysByteSize() const {
+    return keys_byte_size;
+}
+
+size_t ReferringSliceVecRange::valuesByteSize() const {
+    return values_byte_size;
+}
 
 bool ReferringSliceVecRange::isValid() const {
     return valid;
@@ -178,6 +199,8 @@ void ReferringSliceVecRange::emplace(const Slice& key, const Slice& value) {
     slice_data->slice_keys.emplace_back(key);
     slice_data->slice_values.emplace_back(value);
     range_length++;
+    keys_byte_size += key.size() + 8; // key size virtually expanded to internal key size (user key size + 8)
+    values_byte_size += value.size();
 }
 
 }  // namespace ROCKSDB_NAMESPACE
