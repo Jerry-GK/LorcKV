@@ -20,6 +20,7 @@
 #include "rocksdb/data_structure.h"
 #include "rocksdb/memory_allocator.h"
 #include "rocksdb/lorc.h"
+#include "rocksdb/physical_range.h"
 #include "rocksdb/rbtree_lorc.h"
 
 namespace ROCKSDB_NAMESPACE {
@@ -581,11 +582,11 @@ Status UpdateTieredCache(
 
 // Range Cache (lorc)
 // RBTreeLogicallyOrderedRangeCache
-inline std::shared_ptr<LogicallyOrderedRangeCache> NewRBTreeLogicallyOrderedRangeCache(size_t capacity, bool enable_logger = false) {
+inline std::shared_ptr<LogicallyOrderedRangeCache> NewRBTreeLogicallyOrderedRangeCache(size_t capacity, LorcLogger::Level logger_level = LorcLogger::Level::DISABLE, PhysicalRangeType physical_range_type = PhysicalRangeType::VEC) {
   if (capacity == 0) {
     // If capacity is 0, we return a null pointer to indicate no cache.
     return nullptr;
   }
-  return std::make_shared<RBTreeLogicallyOrderedRangeCache>(capacity, enable_logger);
+  return std::make_shared<RBTreeLogicallyOrderedRangeCache>(capacity, logger_level, physical_range_type);
 }  
 }// namespace ROCKSDB_NAMESPACE

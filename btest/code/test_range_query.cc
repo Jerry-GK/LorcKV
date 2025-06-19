@@ -113,7 +113,7 @@ int main() {
     // Configure LORC if enabled
     std::shared_ptr<LogicallyOrderedRangeCache> lorc = nullptr;
     if (enable_lorc) {
-        lorc = rocksdb::NewRBTreeLogicallyOrderedRangeCache(range_cache_size, false);
+        lorc = rocksdb::NewRBTreeLogicallyOrderedRangeCache(range_cache_size, LorcLogger::Level::WARN);
         options.range_cache = lorc;
     }
 

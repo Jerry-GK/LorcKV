@@ -2,8 +2,9 @@
 
 namespace ROCKSDB_NAMESPACE {
 
-LogicallyOrderedRangeCache::LogicallyOrderedRangeCache(size_t capacity_, bool enable_logger_)
-    : ranges_view(LogicalRangesView()), capacity(capacity_), current_size(0), total_range_length(0), enable_statistic(false), cache_statistic(CacheStatistic()), logger(LorcLogger(LorcLogger::Level::DEBUG, enable_logger_)), 
+LogicallyOrderedRangeCache::LogicallyOrderedRangeCache(size_t capacity_, LorcLogger::Level logger_level_, PhysicalRangeType physical_range_type_)
+    : capacity(capacity_), logger(LorcLogger(logger_level_)), physical_range_type(physical_range_type_),
+    ranges_view(LogicalRangesView()), current_size(0), total_range_length(0), enable_statistic(false), cache_statistic(CacheStatistic()), 
     full_hit_count(0), full_query_count(0), hit_size(0), query_size(0) {
 }
 

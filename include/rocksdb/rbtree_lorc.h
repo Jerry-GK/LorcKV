@@ -7,6 +7,7 @@
 #include "rocksdb/continuous_physical_range.h"
 #include "rocksdb/lorc.h"
 #include "rocksdb/physical_range.h"
+#include "rocksdb/vec_physical_range.h"
 
 namespace ROCKSDB_NAMESPACE {
 
@@ -48,7 +49,7 @@ struct PhysicalRangeComparator {
  */
 class RBTreeLogicallyOrderedRangeCache : public LogicallyOrderedRangeCache {
 public:
-    RBTreeLogicallyOrderedRangeCache(size_t capacity, bool enable_logger_ = false);
+    RBTreeLogicallyOrderedRangeCache(size_t capacity, LorcLogger::Level logger_level_ = LorcLogger::Level::DISABLE, PhysicalRangeType physical_range_type_ = PhysicalRangeType::VEC);
     ~RBTreeLogicallyOrderedRangeCache() override;
 
     void putOverlappingRefRange(ReferringRange&& newRefRange) override;

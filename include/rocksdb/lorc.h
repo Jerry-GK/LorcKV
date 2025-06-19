@@ -17,7 +17,8 @@ public:
         DEBUG = 0,
         INFO = 1,
         WARN = 2,
-        ERROR = 3
+        ERROR = 3,
+        DISABLE = 4
     };
 
 private:
@@ -27,12 +28,13 @@ private:
             case INFO:  return "INFO";
             case WARN:  return "WARN";
             case ERROR: return "ERROR";
+            case DISABLE: return "DISABLE";
             default:    return "UNKNOWN";
         }
     }
     
     void log(Level level, const std::string& message) {
-        if (!enabled || level < currentLevel) return;
+        if (level < currentLevel || currentLevel == DISABLE) return;
         
         auto now = std::time(nullptr);
         auto tm = *std::localtime(&now);
@@ -47,12 +49,12 @@ private:
     }
 
 public:
-    LorcLogger(Level level, bool enabled_) : currentLevel(level), enabled(enabled_) {}
-    LorcLogger() : currentLevel(Level::DEBUG), enabled(true) {}
+    LorcLogger(Level level) : currentLevel(level) {}
+    LorcLogger() : currentLevel(Level::DISABLE) {}
     ~LorcLogger() = default;
 
-    bool isEnabled() const {
-        return enabled;
+    bool outputInLevel(Level level) const {
+        return level >= currentLevel && currentLevel != DISABLE;
     }
 
     void debug(const std::string& message) {
@@ -73,7 +75,6 @@ public:
 
 private:
     Level currentLevel;
-    bool enabled;
 };
 
 class CacheStatistic {
@@ -125,7 +126,7 @@ class Arena;
 
 class LogicallyOrderedRangeCache {
 public:
-    LogicallyOrderedRangeCache(size_t capacity_, bool enable_logger_ = false);
+    LogicallyOrderedRangeCache(size_t capacity_, LorcLogger::Level logger_level_ = LorcLogger::Level::DISABLE, PhysicalRangeType physical_range_type_ = PhysicalRangeType::VEC);
     virtual ~LogicallyOrderedRangeCache();
 
     /**
@@ -222,32 +223,30 @@ public:
      */
     virtual std::vector<LogicalRange> divideLogicalRange(const Slice& start_key, size_t len, const Slice& end_key) const = 0;
 
-    static PhysicalRangeType getPhysicalRangeType() {
-        return physicalRangeType;
+    PhysicalRangeType getPhysicalRangeType() const {
+        return physical_range_type;
     }
 
 protected:
     friend class LogicallyOrderedRangeCacheIterator;
 
-    LogicalRangesView ranges_view;
-
     size_t capacity;
+    mutable LorcLogger logger;
+    // the type of underlying physical range storage
+    PhysicalRangeType physical_range_type;
+
+    LogicalRangesView ranges_view;
     size_t current_size;
     size_t total_range_length;
 
     bool enable_statistic; // initialize to false
     CacheStatistic cache_statistic;
 
-    mutable LorcLogger logger;
-
 private:
     int full_hit_count;
     int full_query_count;
     int hit_size;
     int query_size;
-
-    // the type of underlying physical range storage
-    static const PhysicalRangeType physicalRangeType = PhysicalRangeType::CONTINUOUS;
 };
 
 }  // namespace ROCKSDB_NAMESPACE

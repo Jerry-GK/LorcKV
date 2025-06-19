@@ -10,8 +10,8 @@
 
 namespace ROCKSDB_NAMESPACE {
 
-RBTreeLogicallyOrderedRangeCache::RBTreeLogicallyOrderedRangeCache(size_t capacity_, bool enable_logger_)
-    : LogicallyOrderedRangeCache(capacity_, enable_logger_), cache_timestamp(0) {
+RBTreeLogicallyOrderedRangeCache::RBTreeLogicallyOrderedRangeCache(size_t capacity_, LorcLogger::Level logger_level_, PhysicalRangeType physical_range_type_)
+    : LogicallyOrderedRangeCache(capacity_, logger_level_, physical_range_type_), cache_timestamp(0) {
 }
 
 RBTreeLogicallyOrderedRangeCache::~RBTreeLogicallyOrderedRangeCache() {
@@ -58,12 +58,14 @@ void RBTreeLogicallyOrderedRangeCache::putOverlappingRefRange(ReferringRange&& n
                 std::unique_ptr<PhysicalRange> nonOverlappingSubRange;
                 if (LogicallyOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::CONTINUOUS) {
                     nonOverlappingSubRange = ContinuousPhysicalRange::dumpSubRangeFromReferringRange(newRefRange, lastStartKey, newRefRange.endKey(), leftIncluded, true);
-                    if (!nonOverlappingSubRange || !nonOverlappingSubRange->isValid() || nonOverlappingSubRange->length() == 0) {
-                        nonOverlappingSubRange.reset();
-                    }
+                } else if (LogicallyOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::VEC) {
+                    nonOverlappingSubRange = VecPhysicalRange::dumpSubRangeFromReferringRange(newRefRange, lastStartKey, newRefRange.endKey(), leftIncluded, true);
                 } else {
                     logger.error("Unsupported PhysicalRangeType for RBTreeLogicallyOrderedRangeCache");
                     return;
+                }
+                if (!nonOverlappingSubRange || !nonOverlappingSubRange->isValid() || nonOverlappingSubRange->length() == 0) {
+                    nonOverlappingSubRange.reset();
                 }
                 if (nonOverlappingSubRange && nonOverlappingSubRange->isValid() && nonOverlappingSubRange->length() > 0) {
                     // put into logical ranges view with right concation, with left concation if not leftIncluded
@@ -98,12 +100,14 @@ void RBTreeLogicallyOrderedRangeCache::putOverlappingRefRange(ReferringRange&& n
         std::unique_ptr<PhysicalRange> nonOverlappingSubRange;
         if (LogicallyOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::CONTINUOUS) {
             nonOverlappingSubRange = ContinuousPhysicalRange::dumpSubRangeFromReferringRange(newRefRange, lastStartKey, newRefRange.endKey(), leftIncluded, true);
-            if (!nonOverlappingSubRange || !nonOverlappingSubRange->isValid() || nonOverlappingSubRange->length() == 0) {
-                nonOverlappingSubRange.reset();
-            }
+        } else if (LogicallyOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::VEC) {
+            nonOverlappingSubRange = VecPhysicalRange::dumpSubRangeFromReferringRange(newRefRange, lastStartKey, newRefRange.endKey(), leftIncluded, true);
         } else {
             logger.error("Unsupported PhysicalRangeType for RBTreeLogicallyOrderedRangeCache");
             return;
+        }
+        if (!nonOverlappingSubRange || !nonOverlappingSubRange->isValid() || nonOverlappingSubRange->length() == 0) {
+            nonOverlappingSubRange.reset();
         }
         if (nonOverlappingSubRange && nonOverlappingSubRange->isValid() && nonOverlappingSubRange->length() > 0) {
             // put into logical ranges view with left concation if not leftIncluded
@@ -154,6 +158,8 @@ void RBTreeLogicallyOrderedRangeCache::putActualGapRange(ReferringRange&& newRef
     std::unique_ptr<PhysicalRange> newRange;
     if (LogicallyOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::CONTINUOUS) {
         newRange = ContinuousPhysicalRange::buildFromReferringRange(newRefRange);
+    } else if (LogicallyOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::VEC) {
+        newRange = VecPhysicalRange::buildFromReferringRange(newRefRange);
     } else {
         logger.error("Unsupported PhysicalRangeType for RBTreeLogicallyOrderedRangeCache");
         return;
@@ -218,7 +224,12 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
     Status s = ParseInternalKey(internal_key, &parsed_internal_key, false);
     SequenceNumber seq_num = parsed_internal_key.sequence;
     ValueType type = parsed_internal_key.type;
-    return (*it)->update(internal_key, value);
+
+    bool updateSuccessInRange = (*it)->update(internal_key, value);
+    if (!updateSuccessInRange) {
+        logger.error("Failed to update entry (user key = " + parsed_internal_key.user_key.ToString() + ") in PhysicalRange: " + (*it)->toString());
+    }
+    return updateSuccessInRange;
 }
 
 void RBTreeLogicallyOrderedRangeCache::tryVictim() {    
@@ -256,7 +267,7 @@ void RBTreeLogicallyOrderedRangeCache::victim() {
     }
 
     // If multiple ranges exist, remove the victim
-    // If only one PhysicalRange remains, truncate it to fit capacity
+    // If only one PhysicalRange remains, do nothing
     if (orderedRanges.size() > 1 || this->capacity <= 0) {
         for (auto it = orderedRanges.begin(); it != orderedRanges.end();) {
             if ((*it)->startUserKey() >= victimRangeStartKey && 
@@ -285,8 +296,8 @@ void RBTreeLogicallyOrderedRangeCache::victim() {
     } else {
         auto it = orderedRanges.find(victimRangeStartKey);  // Direct heterogeneous lookup
         assert(it != orderedRanges.end() && (*it)->startUserKey() == victimRangeStartKey);
-        // Truncate the last remaining PhysicalRange
-        logger.warn("Not victim the last range: " + (*it)->toString());
+        // Do nothing
+        logger.info("Not victim the last range: " + (*it)->toString());
     }
 }
 
@@ -309,7 +320,7 @@ LogicallyOrderedRangeCacheIterator* RBTreeLogicallyOrderedRangeCache::newLogical
 }
 
 void RBTreeLogicallyOrderedRangeCache::printAllPhysicalRanges() const {
-    if (!logger.isEnabled()) {
+    if (!logger.outputInLevel(LorcLogger::Level::DEBUG)) {
         return;
     }
     logger.debug("All physical ranges in RBTreeLogicallyOrderedRangeCache:");
@@ -322,7 +333,7 @@ void RBTreeLogicallyOrderedRangeCache::printAllPhysicalRanges() const {
 }
 
 void RBTreeLogicallyOrderedRangeCache::printAllLogicalRanges() const {
-    if (!logger.isEnabled()) {
+    if (!logger.outputInLevel(LorcLogger::Level::DEBUG)) {
         return;
     }
     logger.debug("All logical ranges in RBTreeLogicallyOrderedRangeCache:");
@@ -338,7 +349,7 @@ void RBTreeLogicallyOrderedRangeCache::printAllLogicalRanges() const {
 
 void RBTreeLogicallyOrderedRangeCache::printAllRangesWithKeys() const {
     std::shared_lock<std::shared_mutex> lock(cache_mutex_); // Acquire shared lock for reading
-    if (!logger.isEnabled()) {
+    if (!logger.outputInLevel(LorcLogger::Level::DEBUG)) {
         return;
     }
 

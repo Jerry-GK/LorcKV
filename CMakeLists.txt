@@ -646,6 +646,7 @@ set(SOURCES
         cache/lorc/ref_range.cc
         cache/lorc/lorc.cc
         cache/lorc/continuous_physical_range.cc
+        cache/lorc/vec_physical_range.cc
         cache/cache.cc
         cache/cache_entry_roles.cc
         cache/cache_key.cc
