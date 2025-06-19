@@ -29,7 +29,7 @@ public:
 
 private:
     const RBTreeLogicallyOrderedRangeCache* cache;
-    std::set<PhysicalRange>::const_iterator current_range;
+    std::set<std::unique_ptr<PhysicalRange>>::const_iterator current_range;
     int current_index;
     Status iter_status;
     bool valid;

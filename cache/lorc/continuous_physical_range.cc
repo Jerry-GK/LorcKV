@@ -7,34 +7,19 @@
 #include <functional>
 #include <atomic>
 #include "db/dbformat.h"
-#include "rocksdb/physical_range.h"
+#include "rocksdb/continuous_physical_range.h"
 
 namespace ROCKSDB_NAMESPACE {
 
-// Only for debug (internal internal_keys)
-std::string PhysicalRange::ToStringPlain(std::string s) {
-    std::string result;
-    result.reserve(s.size());
-    for (size_t i = 0; i < s.size(); ++i) {
-        unsigned char c = static_cast<unsigned char>(s[i]);
-        if (c < 32 || c > 126) {
-            // ignore the non-printable characters
-            // char hex[5];
-            // snprintf(hex, sizeof(hex), "\\x%02x", c);
-            // result.append(hex);
-        } else {
-            result.push_back(s[i]);
-        }
-    }
-    return result;
+std::string ContinuousPhysicalRange::toString() const {
+    std::string str = "< " + ToStringPlain(this->startUserKey().ToString()) + " -> " + ToStringPlain(this->endUserKey().ToString()) + " >"
+        + " ( len = " + std::to_string(this->length()) + " )";
+    return str;
 }
 
-PhysicalRange::PhysicalRange(bool valid_) {
+// ContinuousPhysicalRange implementation
+ContinuousPhysicalRange::ContinuousPhysicalRange(bool valid_) : PhysicalRange(valid_) {
     this->data = std::make_shared<RangeData>();
-    this->valid = valid_;
-    this->range_length = 0;
-    this->byte_size = 0;
-    this->timestamp = 0;
     if (valid) {
         data = std::make_shared<RangeData>();
         data->keys_buffer_size = 0;
@@ -42,13 +27,11 @@ PhysicalRange::PhysicalRange(bool valid_) {
     }
 }
 
-// TODO(jr): find out is it necessary to deconstruct PhysicalRange asynchronously
-PhysicalRange::~PhysicalRange() {
+ContinuousPhysicalRange::~ContinuousPhysicalRange() {
     data.reset();
 }
 
-PhysicalRange::PhysicalRange(const PhysicalRange& other) {
-    this->valid = other.valid;
+ContinuousPhysicalRange::ContinuousPhysicalRange(const ContinuousPhysicalRange& other) : PhysicalRange(other.valid) {
     this->range_length = other.range_length;
     this->byte_size = other.byte_size;
     this->timestamp = other.timestamp;
@@ -90,7 +73,7 @@ PhysicalRange::PhysicalRange(const PhysicalRange& other) {
     }
 }
 
-PhysicalRange::PhysicalRange(PhysicalRange&& other) noexcept {
+ContinuousPhysicalRange::ContinuousPhysicalRange(ContinuousPhysicalRange&& other) noexcept : PhysicalRange(other.valid) {
     this->data = std::move(other.data);
     this->valid = other.valid;
     this->range_length = other.range_length;
@@ -102,39 +85,17 @@ PhysicalRange::PhysicalRange(PhysicalRange&& other) noexcept {
     other.timestamp = 0;
 }
 
-// PhysicalRange::PhysicalRange(std::vector<std::string>&& internal_keys, std::vector<std::string>&& values, size_t range_length) {
-//     data = std::make_shared<RangeData>();
-//     data->internal_keys = std::move(internal_keys);
-//     data->values = std::move(values);
-//     this->valid = true;
-//     this->range_length = range_length;
-//     this->timestamp = 0;
-// }
-
-// DEPRECATED: used to generate a temp range to compare
-// PhysicalRange::PhysicalRange(Slice startUserKey) {
-//     data = std::make_shared<RangeData>();
-//     data->internal_keys.emplace_back(startUserKey.ToString());
-//     data->internal_keys[0].append(internal_key_extra_bytes, '\0');
-//     this->valid = true;
-//     this->range_length = 1;
-//     this->byte_size = data->internal_keys[0].size();
-//     this->timestamp = 0;
-// }
-
-PhysicalRange::PhysicalRange(std::shared_ptr<RangeData> data_, size_t range_length_) {
+ContinuousPhysicalRange::ContinuousPhysicalRange(std::shared_ptr<RangeData> data_, size_t range_length_) : PhysicalRange(true) {
     this->data = data_;
-    this->valid = true;
     this->range_length = range_length_;
     this->byte_size = 0;
     for (size_t i = 0; i < range_length_; i++) {
         this->byte_size += data_->key_sizes[i];
         this->byte_size += data_->value_sizes[i];
     }
-    this->timestamp = 0;
 }
 
-PhysicalRange& PhysicalRange::operator=(const PhysicalRange& other) {
+ContinuousPhysicalRange& ContinuousPhysicalRange::operator=(const ContinuousPhysicalRange& other) {
     if (this != &other) {
         this->valid = other.valid;
         this->range_length = other.range_length;
@@ -182,7 +143,7 @@ PhysicalRange& PhysicalRange::operator=(const PhysicalRange& other) {
     return *this;
 }
 
-PhysicalRange& PhysicalRange::operator=(PhysicalRange&& other) noexcept {
+ContinuousPhysicalRange& ContinuousPhysicalRange::operator=(ContinuousPhysicalRange&& other) noexcept {
     if (this != &other) {
         // Clean up current object's resources
         this->data.reset();
@@ -202,31 +163,31 @@ PhysicalRange& PhysicalRange::operator=(PhysicalRange&& other) noexcept {
     return *this;
 }
 
-PhysicalRange PhysicalRange::buildFromReferringRange(const ReferringRange& refRange) {
-    PhysicalRange newRange(true);
-    newRange.initializeFromReferringRange(refRange);
+std::unique_ptr<ContinuousPhysicalRange> ContinuousPhysicalRange::buildFromReferringRange(const ReferringRange& refRange) {
+    auto newRange = std::make_unique<ContinuousPhysicalRange>(true);
+    newRange->initializeFromReferringRange(refRange);
     
     for (size_t i = 0; i < refRange.length(); i++) {
         Slice internal_key = refRange.keyAt(i);
         std::string internal_key_str = InternalKey(internal_key, refRange.getSeqNum(), kTypeRangeCacheValue).Encode().ToString();
         Slice value = refRange.valueAt(i);
-        newRange.emplaceInternal(Slice(internal_key_str), value, i);
+        newRange->emplaceInternal(Slice(internal_key_str), value, i);
     }
     
-    newRange.range_length = refRange.length();
-    newRange.byte_size = refRange.keysByteSize() + refRange.valuesByteSize();
-    newRange.rebuildSlices();
+    newRange->range_length = refRange.length();
+    newRange->byte_size = refRange.keysByteSize() + refRange.valuesByteSize();
+    newRange->rebuildSlices();
     return newRange;
 }
 
-PhysicalRange PhysicalRange::dumpSubRangeFromReferringRange(const ReferringRange& refRange, const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded) {
+std::unique_ptr<ContinuousPhysicalRange> ContinuousPhysicalRange::dumpSubRangeFromReferringRange(const ReferringRange& refRange, const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded) {
     assert(refRange.isValid() && refRange.length() > 0 && refRange.startKey() <= startKey && startKey <= endKey && endKey <= refRange.endKey());
 
     // find the start position of the subrange
     int start_pos = refRange.find(startKey);
     if (start_pos < 0 || (size_t)start_pos >= refRange.length()) {
         assert(false);
-        return PhysicalRange(false);
+        return std::make_unique<ContinuousPhysicalRange>(false);
     }
     
     if (refRange.keyAt(start_pos) == startKey && !leftIncluded) {
@@ -236,7 +197,7 @@ PhysicalRange PhysicalRange::dumpSubRangeFromReferringRange(const ReferringRange
     int end_pos = refRange.find(endKey);
     if (end_pos < 0) {
         assert(false);
-        return PhysicalRange(false);
+        return std::make_unique<ContinuousPhysicalRange>(false);
     }
     
     if (refRange.keyAt(end_pos) == endKey) {
@@ -249,81 +210,62 @@ PhysicalRange PhysicalRange::dumpSubRangeFromReferringRange(const ReferringRange
 
     if (start_pos > end_pos || (size_t)start_pos >= refRange.length() || end_pos < 0) {
         // cant find entries in the range
-        return PhysicalRange(false);
+        return std::make_unique<ContinuousPhysicalRange>(false);
     }
     
-    PhysicalRange result(true);
+    auto result = std::make_unique<ContinuousPhysicalRange>(true);
     size_t num_elements = end_pos - start_pos + 1;
-    result.initializeFromReferringRangeSubset(refRange, start_pos, end_pos);
+    result->initializeFromReferringRangeSubset(refRange, start_pos, end_pos);
     
-    result.byte_size = 0;
+    result->byte_size = 0;
     for (int i = start_pos; i <= end_pos; i++) {
         std::string internal_key_str = InternalKey(refRange.keyAt(i), refRange.getSeqNum(), kTypeRangeCacheValue).Encode().ToString();
-        result.emplaceInternal(Slice(internal_key_str), refRange.valueAt(i), i - start_pos);
-        result.byte_size += internal_key_str.size() + refRange.valueAt(i).size();
+        result->emplaceInternal(Slice(internal_key_str), refRange.valueAt(i), i - start_pos);
+        result->byte_size += internal_key_str.size() + refRange.valueAt(i).size();
     }
     
-    result.range_length = num_elements;
-    result.rebuildSlices();
+    result->range_length = num_elements;
+    result->rebuildSlices();
     return result;
 }
 
-const Slice& PhysicalRange::startUserKey() const {
+// Override virtual functions
+const Slice& ContinuousPhysicalRange::startUserKey() const {
     assert(valid && range_length > 0 && data->key_sizes.size() > 0 && data->key_sizes[0] > internal_key_extra_bytes);
     return this->data->user_key_slices[0];
 }
 
-const Slice& PhysicalRange::endUserKey() const {
+const Slice& ContinuousPhysicalRange::endUserKey() const {
     assert(valid && range_length > 0 && data->key_sizes.size() > 0 && data->key_sizes[range_length - 1] > internal_key_extra_bytes);
     return this->data->user_key_slices[range_length - 1];
-}  
+}
 
-const Slice& PhysicalRange::startInternalKey() const {
+const Slice& ContinuousPhysicalRange::startInternalKey() const {
     assert(valid && range_length > 0 && data->key_sizes.size() > 0);
     return this->data->internal_key_slices[0];
 }
 
-const Slice& PhysicalRange::endInternalKey() const {
+const Slice& ContinuousPhysicalRange::endInternalKey() const {
     assert(valid && range_length > 0 && data->key_sizes.size() > 0);
     return this->data->internal_key_slices[range_length - 1];
-}   
+}
 
-const Slice& PhysicalRange::internalKeyAt(size_t index) const {
+const Slice& ContinuousPhysicalRange::internalKeyAt(size_t index) const {
     assert(valid && range_length > index);
     return this->data->internal_key_slices[index];
 }
 
-const Slice& PhysicalRange::userKeyAt(size_t index) const {
+const Slice& ContinuousPhysicalRange::userKeyAt(size_t index) const {
     assert(valid && range_length > index && data->key_sizes[index] > internal_key_extra_bytes);
     return this->data->user_key_slices[index];
 }
 
-const Slice& PhysicalRange::valueAt(size_t index) const {
+const Slice& ContinuousPhysicalRange::valueAt(size_t index) const {
     assert(valid && range_length > index);
     return this->data->value_slices[index];
 }
 
-size_t PhysicalRange::length() const {
-    return range_length;
-}   
-
-size_t PhysicalRange::byteSize() const {
-    return byte_size;
-}   
-
-bool PhysicalRange::isValid() const {
-    return valid;
-}
-
-int PhysicalRange::getTimestamp() const {
-    return timestamp;
-}
-
-void PhysicalRange::setTimestamp(int timestamp_) const {
-    this->timestamp = timestamp_;
-}
-
-bool PhysicalRange::update(const Slice& internal_key, const Slice& value) const {
+bool ContinuousPhysicalRange::update(const Slice& internal_key, const Slice& value) const {
     assert(valid && range_length > 0 && internal_key.size() > internal_key_extra_bytes);    
     Slice user_key = Slice(internal_key.data(), internal_key.size() - PhysicalRange::internal_key_extra_bytes);
     int index = find(user_key);
@@ -353,7 +295,7 @@ bool PhysicalRange::update(const Slice& internal_key, const Slice& value) const 
     return false;
 }
 
-int PhysicalRange::find(const Slice& key) const {
+int ContinuousPhysicalRange::find(const Slice& key) const {
     assert(valid && range_length > 0 && key.size() > 0);
 
     if (!valid || range_length == 0) {
@@ -381,84 +323,7 @@ int PhysicalRange::find(const Slice& key) const {
     return left;
 }
 
-std::string PhysicalRange::toString() const {
-    std::string str = "< " + ToStringPlain(this->startUserKey().ToString()) + " -> " + ToStringPlain(this->endUserKey().ToString()) + " >"
-        + " ( len = " + std::to_string(this->length()) + " )";
-    // if ((int)this->length() != std::stoi(ToStringPlain(this->endUserKey().ToString())) - std::stoi(ToStringPlain(this->startUserKey().ToString())) + 1) {
-    //     str += " (warning: length mismatch)";
-    //     assert(false);
-    // }
-    return str;
-}
-
-// DEPRECATED: Function to combine ordered and non-overlapping ranges with move semantics
-// PhysicalRange PhysicalRange::concatRangesMoved(std::vector<PhysicalRange>& ranges) {
-//     if (ranges.empty()) {
-//         return PhysicalRange(false);
-//     }
-//     if (ranges.size() == 1) {
-//         return ranges[0];
-//     }
-    
-//     // find the longest PhysicalRange
-//     int max_length_index = 0;
-//     size_t max_length = 0;
-//     size_t total_length = 0;
-    
-//     for (int i = 0; i < (int)ranges.size(); i++) {
-//         size_t current_length = ranges[i].length();
-//         total_length += current_length;
-//         if (current_length > max_length) {
-//             max_length = current_length;
-//             max_length_index = i;
-//         }
-//     }
-    
-//     // take the longest range as the base
-//     auto base_data = ranges[max_length_index].data;
-//     base_data->internal_keys.reserve(total_length);
-//     base_data->values.reserve(total_length);
-
-//     for (int i = max_length_index -1; i >= 0; i--) {
-//         base_data->internal_keys.insert(base_data->internal_keys.begin(),
-//             std::make_move_iterator(ranges[i].data->internal_keys.begin()),
-//             std::make_move_iterator(ranges[i].data->internal_keys.end()));
-//         base_data->values.insert(base_data->values.begin(),
-//             std::make_move_iterator(ranges[i].data->values.begin()),
-//             std::make_move_iterator(ranges[i].data->values.end()));
-//         base_data->internal_key_slices.insert(base_data->internal_key_slices.begin(),
-//             std::make_move_iterator(ranges[i].data->internal_key_slices.begin()),
-//             std::make_move_iterator(ranges[i].data->internal_key_slices.end()));
-//         base_data->user_key_slices.insert(base_data->user_key_slices.begin(),
-//             std::make_move_iterator(ranges[i].data->user_key_slices.begin()),
-//             std::make_move_iterator(ranges[i].data->user_key_slices.end()));
-//         base_data->value_slices.insert(base_data->value_slices.begin(),
-//             std::make_move_iterator(ranges[i].data->value_slices.begin()),
-//             std::make_move_iterator(ranges[i].data->value_slices.end()));
-//     }
-
-//     for (int i = max_length_index + 1; i < (int)ranges.size(); i++) {
-//         base_data->internal_keys.insert(base_data->internal_keys.end(),
-//             std::make_move_iterator(ranges[i].data->internal_keys.begin()),
-//             std::make_move_iterator(ranges[i].data->internal_keys.end()));
-//         base_data->values.insert(base_data->values.end(),
-//             std::make_move_iterator(ranges[i].data->values.begin()),
-//             std::make_move_iterator(ranges[i].data->values.end()));
-//         base_data->internal_key_slices.insert(base_data->internal_key_slices.end(),
-//             std::make_move_iterator(ranges[i].data->internal_key_slices.begin()),
-//             std::make_move_iterator(ranges[i].data->internal_key_slices.end()));
-//         base_data->user_key_slices.insert(base_data->user_key_slices.end(),
-//             std::make_move_iterator(ranges[i].data->user_key_slices.begin()),
-//             std::make_move_iterator(ranges[i].data->user_key_slices.end()));
-//         base_data->value_slices.insert(base_data->value_slices.end(),
-//             std::make_move_iterator(ranges[i].data->value_slices.begin()),
-//             std::make_move_iterator(ranges[i].data->value_slices.end()));   
-//     }
-    
-//     return PhysicalRange(base_data, total_length);
-// }
-
-void PhysicalRange::reserve(size_t len) {
+void ContinuousPhysicalRange::reserve(size_t len) {
     assert(valid);
     data->key_offsets.reserve(len);
     data->key_sizes.reserve(len);
@@ -472,7 +337,7 @@ void PhysicalRange::reserve(size_t len) {
     data->value_slices.reserve(len);
 }
 
-void PhysicalRange::initializeFromReferringRange(const ReferringRange& refRange) {
+void ContinuousPhysicalRange::initializeFromReferringRange(const ReferringRange& refRange) {
     size_t keys_total_size = refRange.keysByteSize();
     size_t values_total_size = refRange.valuesByteSize();
     
@@ -486,7 +351,7 @@ void PhysicalRange::initializeFromReferringRange(const ReferringRange& refRange)
     reserve(refRange.length());
 }
 
-void PhysicalRange::initializeFromReferringRangeSubset(const ReferringRange& refRange, int start_pos, int end_pos) {
+void ContinuousPhysicalRange::initializeFromReferringRangeSubset(const ReferringRange& refRange, int start_pos, int end_pos) {
     size_t num_elements = end_pos - start_pos + 1;
     size_t keys_total_size = 0;
     size_t values_total_size = 0;
@@ -504,7 +369,7 @@ void PhysicalRange::initializeFromReferringRangeSubset(const ReferringRange& ref
     reserve(num_elements);
 }
 
-void PhysicalRange::emplaceInternal(const Slice& internal_key, const Slice& value, size_t index) {
+void ContinuousPhysicalRange::emplaceInternal(const Slice& internal_key, const Slice& value, size_t index) {
     assert(valid);
     // Calculate offsets
     size_t key_offset = (index == 0) ? 0 : data->key_offsets[index - 1] + data->key_sizes[index - 1];
@@ -524,7 +389,7 @@ void PhysicalRange::emplaceInternal(const Slice& internal_key, const Slice& valu
     data->overflow_values.emplace_back(nullptr);
 }
 
-void PhysicalRange::updateValueAt(size_t index, const Slice& new_value) const {
+void ContinuousPhysicalRange::updateValueAt(size_t index, const Slice& new_value) const {
     size_t original_size = data->original_value_sizes[index]; // Use original size
     
     if (new_value.size() <= original_size) {
@@ -550,7 +415,7 @@ void PhysicalRange::updateValueAt(size_t index, const Slice& new_value) const {
     }
 }
 
-void PhysicalRange::rebuildSlices() const {
+void ContinuousPhysicalRange::rebuildSlices() const {
     data->internal_key_slices.clear();
     data->user_key_slices.clear();
     data->value_slices.clear();
@@ -567,7 +432,7 @@ void PhysicalRange::rebuildSlices() const {
     }
 }
 
-void PhysicalRange::rebuildSlicesAt(size_t index) const {
+void ContinuousPhysicalRange::rebuildSlicesAt(size_t index) const {
     data->internal_key_slices[index] = Slice(data->keys_buffer.get() + data->key_offsets[index], data->key_sizes[index]);
     data->user_key_slices[index] = Slice(data->keys_buffer.get() + data->key_offsets[index], data->key_sizes[index] - internal_key_extra_bytes);
     

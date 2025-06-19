@@ -222,6 +222,10 @@ public:
      */
     virtual std::vector<LogicalRange> divideLogicalRange(const Slice& start_key, size_t len, const Slice& end_key) const = 0;
 
+    static PhysicalRangeType getPhysicalRangeType() {
+        return physicalRangeType;
+    }
+
 protected:
     friend class LogicallyOrderedRangeCacheIterator;
 
@@ -241,6 +245,9 @@ private:
     int full_query_count;
     int hit_size;
     int query_size;
+
+    // the type of underlying physical range storage
+    static const PhysicalRangeType physicalRangeType = PhysicalRangeType::CONTINUOUS;
 };
 
 }  // namespace ROCKSDB_NAMESPACE

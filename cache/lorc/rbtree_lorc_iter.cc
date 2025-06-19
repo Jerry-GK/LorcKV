@@ -22,7 +22,7 @@ bool RBTreeLogicallyOrderedRangeCacheIterator::HasNextInRange() const {
     if (!valid) {
         return false;
     }
-    return (size_t)current_index + 1 < current_range->length();
+    return (size_t)current_index + 1 < (*current_range)->length();
 }
 
 void RBTreeLogicallyOrderedRangeCacheIterator::SeekToFirst() {
@@ -51,7 +51,7 @@ void RBTreeLogicallyOrderedRangeCacheIterator::SeekToLast() {
         return;
     }
     current_range = std::prev(cache->orderedRanges.end());
-    current_index = current_range->length() - 1;
+    current_index = (*current_range)->length() - 1;
     valid = true;
 }
 
@@ -69,7 +69,7 @@ void RBTreeLogicallyOrderedRangeCacheIterator::Seek(const Slice& target_internal
     }
     
     if (current_range != cache->orderedRanges.end()) {
-        current_index = current_range->find(target_user_key);
+        current_index = (*current_range)->find(target_user_key);
         if (current_index == -1) {
             ++current_range;
             current_index = 0;
@@ -97,10 +97,10 @@ void RBTreeLogicallyOrderedRangeCacheIterator::SeekForPrev(const Slice& target_i
         --current_range;
     }
     
-    if (current_range != cache->orderedRanges.end() && current_range->endUserKey() >= target_user_key) {
-        current_index = current_range->find(target_user_key);
+    if (current_range != cache->orderedRanges.end() && (*current_range)->endUserKey() >= target_user_key) {
+        current_index = (*current_range)->find(target_user_key);
         if (current_index == -1) {
-            current_index = current_range->length() - 1;
+            current_index = (*current_range)->length() - 1;
         }
         valid = true;
     } else {
@@ -114,7 +114,7 @@ void RBTreeLogicallyOrderedRangeCacheIterator::Next() {
         return;
     }
     
-    if ((size_t)current_index < current_range->length() - 1) {
+    if ((size_t)current_index < (*current_range)->length() - 1) {
         current_index++;
     } else {
         ++current_range;
@@ -139,7 +139,7 @@ void RBTreeLogicallyOrderedRangeCacheIterator::Prev() {
             valid = false;
         } else {
             --current_range;
-            current_index = current_range->length() - 1;
+            current_index = (*current_range)->length() - 1;
         }
     }
 }
@@ -150,7 +150,7 @@ Slice RBTreeLogicallyOrderedRangeCacheIterator::key() const {
     if (!valid) {
         return empty_string;
     }
-    return current_range->internalKeyAt(current_index);
+    return (*current_range)->internalKeyAt(current_index);
 }
 
 Slice RBTreeLogicallyOrderedRangeCacheIterator::userKey() const {
@@ -159,7 +159,7 @@ Slice RBTreeLogicallyOrderedRangeCacheIterator::userKey() const {
     if (!valid) {
         return empty_string;
     }
-    return current_range->userKeyAt(current_index);
+    return (*current_range)->userKeyAt(current_index);
 }
 
 Slice RBTreeLogicallyOrderedRangeCacheIterator::value() const {
@@ -168,7 +168,7 @@ Slice RBTreeLogicallyOrderedRangeCacheIterator::value() const {
     if (!valid) {
         return empty_string;
     }
-    return current_range->valueAt(current_index);
+    return (*current_range)->valueAt(current_index);
 }
 
 Status RBTreeLogicallyOrderedRangeCacheIterator::status() const {

@@ -28,7 +28,7 @@ void RBTreeLogicallyOrderedRangeCache::putOverlappingRefRange(ReferringRange&& n
         start_time = std::chrono::high_resolution_clock::now();
     }
 
-    std::vector<PhysicalRange> mergedRanges; 
+    std::vector<std::unique_ptr<PhysicalRange>> mergedRanges; 
     std::string newRangeStr = newRefRange.toString();
 
     // Find the first PhysicalRange that may overlap with newRefRange (keys in ref ranges are all user_key)
@@ -38,8 +38,8 @@ void RBTreeLogicallyOrderedRangeCache::putOverlappingRefRange(ReferringRange&& n
     }
     Slice lastStartKey = newRefRange.startKey();
     bool leftIncluded = true;
-    while (it != orderedRanges.end() && it->startUserKey() <= newRefRange.endKey()) {
-        if (it->endUserKey() < newRefRange.startKey()) {
+    while (it != orderedRanges.end() && (*it)->startUserKey() <= newRefRange.endKey()) {
+        if ((*it)->endUserKey() < newRefRange.startKey()) {
             // no overlap
             ++it;
             continue;
@@ -47,35 +47,44 @@ void RBTreeLogicallyOrderedRangeCache::putOverlappingRefRange(ReferringRange&& n
 
         // Handle left split: if existing PhysicalRange starts before newRefRange
         // If exists, it must be the first branch matched in the loop
-        if (it->startUserKey() < newRefRange.startKey() && it->endUserKey() >= newRefRange.startKey()) {
-            lastStartKey = it->endUserKey();
+        if ((*it)->startUserKey() < newRefRange.startKey() && (*it)->endUserKey() >= newRefRange.startKey()) {
+            lastStartKey = (*it)->endUserKey();
             leftIncluded = false;
-        } else if (it->startUserKey() <= newRefRange.endKey()) {
+        } else if ((*it)->startUserKey() <= newRefRange.endKey()) {
             // overlapping without left split
             // masterialize the newRefRange of (lastStartKey, it->startUserKey())
-            assert(lastStartKey <= it->startUserKey());
-            if (lastStartKey < it->startUserKey()) {
-                PhysicalRange nonOverlappingSubRange = PhysicalRange::dumpSubRangeFromReferringRange(newRefRange, lastStartKey, it->startUserKey(), leftIncluded, false);
-                if (nonOverlappingSubRange.isValid() && nonOverlappingSubRange.length() > 0) {
+            assert(lastStartKey <= (*it)->startUserKey());
+            if (lastStartKey < (*it)->startUserKey()) {
+                std::unique_ptr<PhysicalRange> nonOverlappingSubRange;
+                if (LogicallyOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::CONTINUOUS) {
+                    nonOverlappingSubRange = ContinuousPhysicalRange::dumpSubRangeFromReferringRange(newRefRange, lastStartKey, newRefRange.endKey(), leftIncluded, true);
+                    if (!nonOverlappingSubRange || !nonOverlappingSubRange->isValid() || nonOverlappingSubRange->length() == 0) {
+                        nonOverlappingSubRange.reset();
+                    }
+                } else {
+                    logger.error("Unsupported PhysicalRangeType for RBTreeLogicallyOrderedRangeCache");
+                    return;
+                }
+                if (nonOverlappingSubRange && nonOverlappingSubRange->isValid() && nonOverlappingSubRange->length() > 0) {
                     // put into logical ranges view with right concation, with left concation if not leftIncluded
-                    this->ranges_view.putLogicalRange(LogicalRange(nonOverlappingSubRange.startUserKey().ToString(), nonOverlappingSubRange.endUserKey().ToString(), nonOverlappingSubRange.length(), true, true, true), !leftIncluded, true);
+                    this->ranges_view.putLogicalRange(LogicalRange(nonOverlappingSubRange->startUserKey().ToString(), nonOverlappingSubRange->endUserKey().ToString(), nonOverlappingSubRange->length(), true, true, true), !leftIncluded, true);
                     mergedRanges.emplace_back(std::move(nonOverlappingSubRange));
                 }
             }
-            lastStartKey = it->endUserKey();
+            lastStartKey = (*it)->endUserKey();
             leftIncluded = false;
         }
 
         // Remove the old overlapping PhysicalRange from both containers
-        auto physicalRangeStartKeys = lengthMap.equal_range(it->length());
+        auto physicalRangeStartKeys = lengthMap.equal_range((*it)->length());
         for (auto itt = physicalRangeStartKeys.first; itt != physicalRangeStartKeys.second; ++itt) {
-            if (itt->second == it->startUserKey()) {
+            if (itt->second == (*it)->startUserKey()) {
                 lengthMap.erase(itt);
                 break;
             }
         }
-        this->current_size -= it->byteSize();
-        this->total_range_length -= it->length();
+        this->current_size -= (*it)->byteSize();
+        this->total_range_length -= (*it)->length();
         
         // Move the old PhysicalRange in range cache to mergedRanges, and remove it (later merged as one large range into the range cache)
         // Using extract() without data copy
@@ -86,24 +95,33 @@ void RBTreeLogicallyOrderedRangeCache::putOverlappingRefRange(ReferringRange&& n
 
     // handle the last non-overlapping subrange if exists (case that has no right split)
     if (leftIncluded ? lastStartKey <= newRefRange.endKey() : lastStartKey < newRefRange.endKey()) {
-        PhysicalRange nonOverlappingSubRange = PhysicalRange::dumpSubRangeFromReferringRange(newRefRange, lastStartKey, newRefRange.endKey(), leftIncluded, true);
-        if (nonOverlappingSubRange.isValid() && nonOverlappingSubRange.length() > 0) {
+        std::unique_ptr<PhysicalRange> nonOverlappingSubRange;
+        if (LogicallyOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::CONTINUOUS) {
+            nonOverlappingSubRange = ContinuousPhysicalRange::dumpSubRangeFromReferringRange(newRefRange, lastStartKey, newRefRange.endKey(), leftIncluded, true);
+            if (!nonOverlappingSubRange || !nonOverlappingSubRange->isValid() || nonOverlappingSubRange->length() == 0) {
+                nonOverlappingSubRange.reset();
+            }
+        } else {
+            logger.error("Unsupported PhysicalRangeType for RBTreeLogicallyOrderedRangeCache");
+            return;
+        }
+        if (nonOverlappingSubRange && nonOverlappingSubRange->isValid() && nonOverlappingSubRange->length() > 0) {
             // put into logical ranges view with left concation if not leftIncluded
-            this->ranges_view.putLogicalRange(LogicalRange(nonOverlappingSubRange.startUserKey().ToString(), nonOverlappingSubRange.endUserKey().ToString(), nonOverlappingSubRange.length(), true, true, true), !leftIncluded, false);
+            this->ranges_view.putLogicalRange(LogicalRange(nonOverlappingSubRange->startUserKey().ToString(), nonOverlappingSubRange->endUserKey().ToString(), nonOverlappingSubRange->length(), true, true, true), !leftIncluded, false);
             mergedRanges.emplace_back(std::move(nonOverlappingSubRange));
         }
     }
     
     // print mergedRanges
     for (auto& range : mergedRanges) {
-        logger.debug("Merged PhysicalRange: " + range.toString());
+        logger.debug("Merged PhysicalRange: " + range->toString());
     }
 
     // Add the new merged PhysicalRange to both containers
     for (auto& mergedRange : mergedRanges) {
-        lengthMap.emplace(mergedRange.length(), mergedRange.startUserKey().ToString());
-        this->current_size += mergedRange.byteSize();
-        this->total_range_length += mergedRange.length();
+        lengthMap.emplace(mergedRange->length(), mergedRange->startUserKey().ToString());
+        this->current_size += mergedRange->byteSize();
+        this->total_range_length += mergedRange->length();
         orderedRanges.emplace(std::move(mergedRange));
     }
 
@@ -132,7 +150,15 @@ void RBTreeLogicallyOrderedRangeCache::putOverlappingRefRange(ReferringRange&& n
 void RBTreeLogicallyOrderedRangeCache::putActualGapRange(ReferringRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) {
     std::unique_lock<std::shared_mutex> lock(cache_mutex_); // Acquire unique lock for writing
     std::chrono::high_resolution_clock::time_point start_time;
-    PhysicalRange newRange = PhysicalRange::buildFromReferringRange(newRefRange);
+
+    std::unique_ptr<PhysicalRange> newRange;
+    if (LogicallyOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::CONTINUOUS) {
+        newRange = ContinuousPhysicalRange::buildFromReferringRange(newRefRange);
+    } else {
+        logger.error("Unsupported PhysicalRangeType for RBTreeLogicallyOrderedRangeCache");
+        return;
+    }
+
     if (this->enable_statistic) {
         start_time = std::chrono::high_resolution_clock::now();
     }
@@ -141,12 +167,12 @@ void RBTreeLogicallyOrderedRangeCache::putActualGapRange(ReferringRange&& newRef
         assert(emptyConcatLeftKey.empty() && emptyConcatRightKey.empty());
 
         // Update the logical ranges view
-        ranges_view.putLogicalRange(LogicalRange(newRange.startUserKey().ToString(), newRange.endUserKey().ToString(), newRange.length(), true, true, true), leftConcat, rightConcat);
+        ranges_view.putLogicalRange(LogicalRange(newRange->startUserKey().ToString(), newRange->endUserKey().ToString(), newRange->length(), true, true, true), leftConcat, rightConcat);
 
         // Put into physical ranges directly since no overlapping
-        lengthMap.emplace(newRange.length(), newRange.startUserKey().ToString());
-        this->current_size += newRange.byteSize();
-        this->total_range_length += newRange.length();
+        lengthMap.emplace(newRange->length(), newRange->startUserKey().ToString());
+        this->current_size += newRange->byteSize();
+        this->total_range_length += newRange->length();
         orderedRanges.emplace(std::move(newRange));
     } else {
         // empty actual range only for concat adjacent ranges
@@ -185,14 +211,14 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
     if (it != orderedRanges.begin()) {
         it--;
     }
-    if (it == orderedRanges.end() || it->startUserKey() > user_key || it->endUserKey() < user_key) {
+    if (it == orderedRanges.end() || (*it)->startUserKey() > user_key || (*it)->endUserKey() < user_key) {
         return false;
     }
     ParsedInternalKey parsed_internal_key;
     Status s = ParseInternalKey(internal_key, &parsed_internal_key, false);
     SequenceNumber seq_num = parsed_internal_key.sequence;
     ValueType type = parsed_internal_key.type;
-    return it->update(internal_key, value);
+    return (*it)->update(internal_key, value);
 }
 
 void RBTreeLogicallyOrderedRangeCache::tryVictim() {    
@@ -233,16 +259,16 @@ void RBTreeLogicallyOrderedRangeCache::victim() {
     // If only one PhysicalRange remains, truncate it to fit capacity
     if (orderedRanges.size() > 1 || this->capacity <= 0) {
         for (auto it = orderedRanges.begin(); it != orderedRanges.end();) {
-            if (it->startUserKey() >= victimRangeStartKey && 
-                it->endUserKey() <= victimRangeEndKey) {
-                logger.debug("Victim: " + it->toString());
-                this->current_size -= it->byteSize();
-                this->total_range_length -= it->length();
+            if ((*it)->startUserKey() >= victimRangeStartKey && 
+                (*it)->endUserKey() <= victimRangeEndKey) {
+                logger.debug("Victim: " + (*it)->toString());
+                this->current_size -= (*it)->byteSize();
+                this->total_range_length -= (*it)->length();
                 
                 // Remove from lengthMap
-                auto range = lengthMap.equal_range(it->length());
+                auto range = lengthMap.equal_range((*it)->length());
                 for (auto mapIt = range.first; mapIt != range.second; ++mapIt) {
-                    if (mapIt->second == it->startUserKey().ToString()) {
+                    if (mapIt->second == (*it)->startUserKey().ToString()) {
                         lengthMap.erase(mapIt);
                         break;
                     }
@@ -258,27 +284,18 @@ void RBTreeLogicallyOrderedRangeCache::victim() {
         ranges_view.removeRange(victimRangeStartKey);
     } else {
         auto it = orderedRanges.find(victimRangeStartKey);  // Direct heterogeneous lookup
-        assert(it != orderedRanges.end() && it->startUserKey() == victimRangeStartKey);
+        assert(it != orderedRanges.end() && (*it)->startUserKey() == victimRangeStartKey);
         // Truncate the last remaining PhysicalRange
-        logger.warn("Not victim the last range: " + it->toString());
-
-        // logger.debug("Truncate: " + it->toString());
-        // lengthMap.erase(lengthMap.find(it->length()));
-        // it->truncate(this->capacity);
-        // lengthMap.emplace(it->length(), it->startUserKey().ToString());
-        // this->current_size = it->byteSize();
-        // this->total_range_length = it->length();
-        // ranges_view.removeRange(victimRangeStartKey);
-        // ranges_view.putLogicalRange(LogicalRange(it->startUserKey().ToString(), it->endUserKey().ToString(), it->length(), true, true, true), false, false);
+        logger.warn("Not victim the last range: " + (*it)->toString());
     }
 }
 
 void RBTreeLogicallyOrderedRangeCache::pinRange(std::string startKey) {
     std::unique_lock<std::shared_mutex> lock(cache_mutex_);
     auto it = orderedRanges.find(startKey);  // Direct heterogeneous lookup
-    if (it != orderedRanges.end() && it->startUserKey() == startKey) {
+    if (it != orderedRanges.end() && (*it)->startUserKey() == startKey) {
         // update the timestamp
-        it->setTimestamp(this->cache_timestamp++);
+        (*it)->setTimestamp(this->cache_timestamp++);
     }
 }
 
@@ -297,7 +314,7 @@ void RBTreeLogicallyOrderedRangeCache::printAllPhysicalRanges() const {
     }
     logger.debug("All physical ranges in RBTreeLogicallyOrderedRangeCache:");
     for (auto it = orderedRanges.begin(); it != orderedRanges.end(); ++it) {
-        logger.debug("PhysicalRange: " + it->toString());
+        logger.debug("PhysicalRange: " + (*it)->toString());
     }
     logger.debug("Total PhysicalRange size: " + std::to_string(this->current_size));
     logger.debug("Total PhysicalRange length: " + std::to_string(this->total_range_length));
@@ -333,9 +350,9 @@ void RBTreeLogicallyOrderedRangeCache::printAllRangesWithKeys() const {
 
     logger.debug("All keys in RBTreeLogicallyOrderedRangeCache:");
     for (const auto& range : orderedRanges) {
-        for (size_t i = 0; i < range.length(); ++i) {
+        for (size_t i = 0; i < range->length(); ++i) {
             ParsedInternalKey parsed_key;
-            Status s = ParseInternalKey(range.internalKeyAt(i), &parsed_key, false);
+            Status s = ParseInternalKey(range->internalKeyAt(i), &parsed_key, false);
             logger.debug("User Key: " + parsed_key.user_key.ToString() + ", Seq = " + std::to_string(parsed_key.sequence) +
                          ", Type = " + std::to_string(static_cast<unsigned char>(parsed_key.type)));
         }
@@ -455,14 +472,14 @@ size_t RBTreeLogicallyOrderedRangeCache::getLengthInRangeCache(const Slice& star
     auto start_it = orderedRanges.upper_bound(start_key);  // Direct heterogeneous lookup without creating temporary object
     if (start_it != orderedRanges.begin()) {
         --start_it;
-        assert(start_it->endUserKey() >= start_key);
+        assert((*start_it)->endUserKey() >= start_key);
     }
     
     // Find the range that contains or comes after end_key
     auto end_it = orderedRanges.upper_bound(end_key);  // Direct heterogeneous lookup without creating temporary object
     if (end_it != orderedRanges.begin()) {
         --end_it;
-        assert(end_it->endUserKey() >= end_key);
+        assert((*end_it)->endUserKey() >= end_key);
     }
 
     assert(start_it != orderedRanges.end() && end_it != orderedRanges.end() && std::distance(start_it, end_it) >= 0);
@@ -470,16 +487,16 @@ size_t RBTreeLogicallyOrderedRangeCache::getLengthInRangeCache(const Slice& star
     // Iterate from start_it to calculate total length
     for (auto it = start_it; it != orderedRanges.end(); ++it) {
         int start_index = 0;
-        int end_index = it->length() - 1;
-        if (it->startUserKey() < start_key && it->endUserKey() >= start_key) {
-            start_index = it->find(start_key);
+        int end_index = (*it)->length() - 1;
+        if ((*it)->startUserKey() < start_key && (*it)->endUserKey() >= start_key) {
+            start_index = (*it)->find(start_key);
             assert(start_index >= 0);
         }
 
-        if (it->startUserKey() < end_key && it->endUserKey() >= end_key) {
-            end_index = it->find(end_key);
+        if ((*it)->startUserKey() < end_key && (*it)->endUserKey() >= end_key) {
+            end_index = (*it)->find(end_key);
             assert(end_index >= 0);
-            if (it->userKeyAt(end_index) != end_key) {
+            if ((*it)->userKeyAt(end_index) != end_key) {
                 end_index -= 1;
             }
         }

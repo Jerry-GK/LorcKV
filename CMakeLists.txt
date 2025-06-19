@@ -645,7 +645,7 @@ set(SOURCES
         cache/lorc/rbtree_lorc.cc
         cache/lorc/ref_range.cc
         cache/lorc/lorc.cc
-        cache/lorc/physical_range.cc
+        cache/lorc/continuous_physical_range.cc
         cache/cache.cc
         cache/cache_entry_roles.cc
         cache/cache_key.cc
