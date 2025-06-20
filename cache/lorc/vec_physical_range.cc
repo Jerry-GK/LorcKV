@@ -225,35 +225,54 @@ const Slice& VecPhysicalRange::valueAt(size_t index) const {
     return this->data->value_slices[index];
 }
 
-bool VecPhysicalRange::update(const Slice& internal_key, const Slice& value) const {
+PhysicalRangeUpdateResult VecPhysicalRange::update(const Slice& internal_key, const Slice& value) const {
     assert(valid && range_length > 0 && internal_key.size() > internal_key_extra_bytes);    
     Slice user_key = Slice(internal_key.data(), internal_key.size() - VecPhysicalRange::internal_key_extra_bytes);
     int index = find(user_key);
+    // index == -1 indicates an tail insertion of middle physical range
+
+    // Parse the internal key to get sequence number
+    ParsedInternalKey parsed_internal_key;
+    Status s = ParseInternalKey(internal_key, &parsed_internal_key, false);
+    if (!s.ok()) {
+        return PhysicalRangeUpdateResult::ERROR;
+    }
+    SequenceNumber seq_num = parsed_internal_key.sequence;
+    // Create new internal key with kTypeRangeCacheValue type
+    std::string new_internal_key_str = InternalKey(user_key, seq_num, kTypeRangeCacheValue).Encode().ToString();
+
     // dont use internal_key for comparison (the last bit may be kTypeValue in Range Cache and kTypeBlobIndex in LSM)
     if (index >= 0 && userKeyAt(index) == user_key) {
-        // update the sequence number of the internal key, the type is turned to kTypeRangeCacheValue
-        ParsedInternalKey parsed_internal_key;
-        Status s = ParseInternalKey(internal_key, &parsed_internal_key, false);
-        SequenceNumber seq_num = parsed_internal_key.sequence;
-        if (!s.ok()) {
-            return false;
-        }
-        std::string new_internal_key_str = InternalKey(user_key, seq_num, kTypeRangeCacheValue).Encode().ToString();
-
-        ParsedInternalKey old_parsed_internal_key;
-        s = ParseInternalKey(Slice(data->internal_keys[index]), &old_parsed_internal_key, false);
-        if (!s.ok()) {
-            return false;
-        }
-        SequenceNumber old_seq_num = old_parsed_internal_key.sequence;
-
         data->internal_keys[index] = new_internal_key_str;
-
         // update the value
         data->values[index] = value.ToString();
-        return true;
+
+        return PhysicalRangeUpdateResult::UPDATED;
+    } else if (index == -1 || userKeyAt(index) != user_key) {
+        assert(index == -1 || userKeyAt(index) > user_key);
+        if (index == -1) {
+            index = range_length; // tail insertion
+        }
+
+        // random insert in vec physical range
+        data->internal_keys.insert(data->internal_keys.begin() + index, new_internal_key_str);
+        data->values.insert(data->values.begin() + index, value.ToString());
+        
+        // Insert corresponding slices at the same position
+        data->internal_key_slices.insert(data->internal_key_slices.begin() + index, 
+            Slice(data->internal_keys[index].data(), data->internal_keys[index].size()));
+        data->user_key_slices.insert(data->user_key_slices.begin() + index,
+            Slice(data->internal_keys[index].data(), data->internal_keys[index].size() - internal_key_extra_bytes));
+        data->value_slices.insert(data->value_slices.begin() + index,
+            Slice(data->values[index].data(), data->values[index].size()));
+        
+        range_length++;
+        byte_size += new_internal_key_str.size() + value.size();
+        
+        return PhysicalRangeUpdateResult::INSERTED;
     }
-    return false;
+    
+    return PhysicalRangeUpdateResult::ERROR;
 }
 
 int VecPhysicalRange::find(const Slice& key) const {

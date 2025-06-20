@@ -2313,7 +2313,8 @@ Status DBImpl::ScanImpl(const ReadOptions& _read_options,
   auto lorc = column_family->GetRangeCache();
   _read_options.read_tier = kReadAllTier; // force read all tier for scan (may be reset internally)
   // return ScanWithIteratorInternal(_read_options, column_family, start_key, end_key, len, keys, values);
-  return ScanWithPredivisionInternal(_read_options, column_family, start_key, end_key, len, keys, values);
+  Status s = ScanWithPredivisionInternal(_read_options, column_family, start_key, end_key, len, keys, values);
+  return s;
 }
 
 Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
@@ -2361,9 +2362,10 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
       it->SeekToFirst();
     } else {
       it->Seek(range_start_key);
-      if (it->Valid() && it->key() != range_start_key) {
-        assert(false);
-      }
+      // if (it->Valid() && it->key() != range_start_key) {
+      //   // TODO(jr): remove the debug line
+      //   assert(false);
+      // }
     }
 
     // ref range for the gap range not in range cache
@@ -2409,10 +2411,10 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
       // try to put non-hit range to range cache
       if (ref_range.isValid() && ref_range.length() > 0) {
         // not included in non-hit ranges indicates that the range should be concatenated with ranges in range cache on the corresponding side
-        lorc->putActualGapRange(std::move(ref_range), !range.isLeftIncluded(), concatRightRangeInCache, false, "", "");
+        lorc->putGapPhysicalRange(std::move(ref_range), !range.isLeftIncluded(), concatRightRangeInCache, false, "", "");
       } else if (ref_range.isValid() && ref_range.length() == 0 && !range.isLeftIncluded() && concatRightRangeInCache) {
         // put the empty gap to concat adjacent ranges in range cache
-        lorc->putActualGapRange(std::move(ref_range), true, true, true, range_start_key.ToString(), range_end_key.ToString());
+        lorc->putGapPhysicalRange(std::move(ref_range), true, true, true, range_start_key.ToString(), range_end_key.ToString());
       }
     }
   }

@@ -43,6 +43,11 @@ public:
     size_t length() const {
         return range_length;
     }
+    
+    // only used when updating entries of range cache triggers an insertion in its physical range
+    void setLength(size_t length) {
+        range_length = length;
+    }
 
     bool isInRangeCache() const {
         return in_range_cache;

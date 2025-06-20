@@ -265,22 +265,26 @@ const Slice& ContinuousPhysicalRange::valueAt(size_t index) const {
     return this->data->value_slices[index];
 }
 
-bool ContinuousPhysicalRange::update(const Slice& internal_key, const Slice& value) const {
+PhysicalRangeUpdateResult ContinuousPhysicalRange::update(const Slice& internal_key, const Slice& value) const {
     assert(valid && range_length > 0 && internal_key.size() > internal_key_extra_bytes);    
     Slice user_key = Slice(internal_key.data(), internal_key.size() - PhysicalRange::internal_key_extra_bytes);
     int index = find(user_key);
+    if (index < 0) {
+        assert(false);
+        return PhysicalRangeUpdateResult::OUT_OF_RANGE;
+    }
+
+    // Update sequence number in key (in-place since size doesn't change)
+    ParsedInternalKey parsed_internal_key;
+    Status s = ParseInternalKey(internal_key, &parsed_internal_key, false);
+    if (!s.ok()) {
+        return PhysicalRangeUpdateResult::ERROR;
+    }
     
-    if (index >= 0 && userKeyAt(index) == user_key) {
-        // Update sequence number in key (in-place since size doesn't change)
-        ParsedInternalKey parsed_internal_key;
-        Status s = ParseInternalKey(internal_key, &parsed_internal_key, false);
-        if (!s.ok()) {
-            return false;
-        }
-        
-        SequenceNumber seq_num = parsed_internal_key.sequence;
-        std::string new_internal_key_str = InternalKey(user_key, seq_num, kTypeRangeCacheValue).Encode().ToString();
-        
+    SequenceNumber seq_num = parsed_internal_key.sequence;
+    std::string new_internal_key_str = InternalKey(user_key, seq_num, kTypeRangeCacheValue).Encode().ToString();
+
+    if (userKeyAt(index) == user_key) {
         // Update key in continuous buffer (same size, so in-place)
         memcpy(data->keys_buffer.get() + data->key_offsets[index], 
                new_internal_key_str.data(), new_internal_key_str.size());
@@ -290,9 +294,13 @@ bool ContinuousPhysicalRange::update(const Slice& internal_key, const Slice& val
         
         // Rebuild affected slices
         rebuildSlicesAt(index);
-        return true;
+        return PhysicalRangeUpdateResult::UPDATED;
+    } else if (userKeyAt(index) != user_key) {
+        // continuous physical range does NOT support random insertion
+        return PhysicalRangeUpdateResult::UNABLE_TO_INSERT;
     }
-    return false;
+    
+    return PhysicalRangeUpdateResult::ERROR;
 }
 
 int ContinuousPhysicalRange::find(const Slice& key) const {

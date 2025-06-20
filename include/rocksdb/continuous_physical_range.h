@@ -73,7 +73,7 @@ public:
     const Slice& internalKeyAt(size_t index) const override;
     const Slice& userKeyAt(size_t index) const override;
     const Slice& valueAt(size_t index) const override;
-    bool update(const Slice& internal_key, const Slice& value) const override;
+    PhysicalRangeUpdateResult update(const Slice& internal_key, const Slice& value) const override;
     int find(const Slice& key) const override;
     void reserve(size_t len) override;
     std::string toString() const override;

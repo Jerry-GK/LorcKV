@@ -142,7 +142,7 @@ public:
      * Try to merge a new range(from range query result not in range cache)
      * The input range should be non-overlapping with existing ranges, but a gap range which can "fill" the gap of some existing ranges.
      */
-    virtual void putActualGapRange(ReferringRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) = 0;
+    virtual void putGapPhysicalRange(ReferringRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) = 0;
 
     /**
      * Update an entry in existing ranges

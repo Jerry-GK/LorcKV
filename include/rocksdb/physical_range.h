@@ -13,6 +13,14 @@ enum class PhysicalRangeType {
     VEC
 };
 
+enum class PhysicalRangeUpdateResult {
+    UPDATED,
+    INSERTED,
+    UNABLE_TO_INSERT,
+    OUT_OF_RANGE,
+    ERROR
+};
+
 /**
  * @brief PhysicalRange abstract base class for sorted key-value ranges in memory
  */
@@ -34,8 +42,8 @@ public:
     virtual const Slice& internalKeyAt(size_t index) const = 0;
     virtual const Slice& userKeyAt(size_t index) const = 0;
     virtual const Slice& valueAt(size_t index) const = 0;
-    virtual bool update(const Slice& internal_key, const Slice& value) const = 0;
-    virtual int find(const Slice& key) const = 0;
+    virtual PhysicalRangeUpdateResult update(const Slice& internal_key, const Slice& value) const = 0;
+    virtual int find(const Slice& key) const = 0;   // find the first index of the key >= the target key, -1 if no such key
     virtual void reserve(size_t len) = 0;
     virtual std::string toString() const = 0;
     
