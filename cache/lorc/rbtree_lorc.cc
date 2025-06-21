@@ -57,6 +57,8 @@ void RBTreeLogicallyOrderedRangeCache::putGapPhysicalRange(ReferringRange&& newR
         // no need to change actual physical ranges info
     }
 
+    // Update the cache sequence number after putting a new range
+    this->cache_seq_num = std::max(this->cache_seq_num, newRefRange.getSeqNum());
 
     // do NOT do victim here (call victim externally after filling all gap ranges)
     // while (this->current_size > this->capacity) {
@@ -94,7 +96,7 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
     };
     auto range_it = find_first_range(user_key);
     if (range_it == logical_ranges.end() || range_it->startUserKey() > user_key) {
-        // The user key is not in any logical range, don NOT update
+        // The user key is not in any logical range, no need to update!
         return false;
     }
     Slice logical_range_start_key = range_it->startUserKey();
@@ -125,8 +127,7 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
 
     ParsedInternalKey parsed_internal_key;
     Status s = ParseInternalKey(internal_key, &parsed_internal_key, false);
-    SequenceNumber seq_num = parsed_internal_key.sequence;
-    ValueType type = parsed_internal_key.type;
+    SequenceNumber key_seq_num = parsed_internal_key.sequence;
 
     // update in physical range
     PhysicalRangeUpdateResult updateResult = (*it)->update(internal_key, value);
@@ -136,6 +137,7 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
         if (LogicallyOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::CONTINUOUS) {
             logger.error("Random insertion in continuous physical range is not supported yet");
         }
+        return false;
     } else if (updateResult == PhysicalRangeUpdateResult::ERROR) {
         logger.error("Error updating entry (user key = " + parsed_internal_key.user_key.ToString() + ") in PhysicalRange: " + (*it)->toString());
         return false;
@@ -158,7 +160,10 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
         }
     }
 
-    return updateResult == PhysicalRangeUpdateResult::UPDATED || updateResult == PhysicalRangeUpdateResult::INSERTED;
+    assert(updateResult == PhysicalRangeUpdateResult::UPDATED || updateResult == PhysicalRangeUpdateResult::INSERTED);
+    // Update the cache sequence number after updating an entry
+    this->cache_seq_num = std::max(this->cache_seq_num, key_seq_num);
+    return true;
 }
 
 void RBTreeLogicallyOrderedRangeCache::tryVictim() {    

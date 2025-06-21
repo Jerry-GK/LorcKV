@@ -2324,16 +2324,25 @@ Status DBImpl::ScanWithPredivision(const ReadOptions& _read_options,
                         std::vector<std::string>* keys,
                         std::vector<std::string>* values) {
   auto lorc = column_family->GetRangeCache();
+  const Snapshot* snapshot = _read_options.snapshot ? _read_options.snapshot : this->GetSnapshot();
+  SequenceNumber read_seq_num = snapshot->GetSequenceNumber();
+
   if (!lorc) {
+    return ScanWithAllTierIterator(_read_options, column_family, start_key, end_key, len, keys, values);
+  }
+
+  // TODO(jr): control the visibility of range cache better (MVCC?)
+  SequenceNumber cache_seq_num  = lorc->getCacheSeqNum();
+  bool is_range_cache_visible = (read_seq_num >= cache_seq_num);
+  if (!is_range_cache_visible) {
+    // ignore range cache is not visible
+    lorc->getLogger().warn("ScanWithPredivision: range cache is not visible, read_seq_num = " + std::to_string(read_seq_num) + ", cache_seq_num = " + std::to_string(cache_seq_num));
     return ScanWithAllTierIterator(_read_options, column_family, start_key, end_key, len, keys, values);
   }
   
   // TODO(jr): Add comments to explain this method whose logic is very complicated
   std::vector<LogicalRange> divided_logical_ranges = lorc->divideLogicalRange(start_key, len, end_key);
   // lorc->printAllLogicalRanges();
-
-  const Snapshot* snapshot = _read_options.snapshot ? _read_options.snapshot : this->GetSnapshot();
-  SequenceNumber seq_num = snapshot->GetSequenceNumber();
 
   if (len != 0) {
     keys->reserve(len);
@@ -2368,7 +2377,7 @@ Status DBImpl::ScanWithPredivision(const ReadOptions& _read_options,
     }
 
     // ref range for the gap range not in range cache
-    ReferringRange ref_range(true, seq_num);
+    ReferringRange ref_range(true, read_seq_num);
     bool concatRightRangeInCache = false; // indicates that the right range of the current range should be concatenated with ranges in range cache
     for (; it->Valid(); it->Next()) {
       if (!range.isLeftIncluded() && !range_start_key.empty() && it->key() == range_start_key) {
@@ -2390,7 +2399,7 @@ Status DBImpl::ScanWithPredivision(const ReadOptions& _read_options,
       if (lorc && !in_range_cache) {
         // fill the gap range (with an extra copy for each key-value pair)
         // use kTypeRangeCacheValue as the value type for internal keys of range cache
-        std::string internal_key_str = InternalKey(it->key(), seq_num, kTypeRangeCacheValue).Encode().ToString();
+        std::string internal_key_str = InternalKey(it->key(), read_seq_num, kTypeRangeCacheValue).Encode().ToString();
         ref_range.emplace(Slice(keys->back()), Slice(values->back()));
       }
 

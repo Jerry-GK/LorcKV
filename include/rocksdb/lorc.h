@@ -153,6 +153,10 @@ public:
      */
     virtual void tryVictim() = 0;
 
+    virtual LorcLogger& getLogger() {
+        return logger;
+    }
+
     virtual size_t getCapacity() const {
         return capacity;
     }
@@ -163,6 +167,10 @@ public:
 
     virtual size_t getTotalRangeLength() const {
         return total_range_length;
+    }
+
+    virtual SequenceNumber getCacheSeqNum() const {
+        return cache_seq_num;
     }
 
     /**
@@ -229,6 +237,7 @@ protected:
     LogicalRangesView ranges_view;
     size_t current_size;
     size_t total_range_length;
+    SequenceNumber cache_seq_num; // the max key sequence number in the cache
 
     bool enable_statistic; // initialize to false
     CacheStatistic cache_statistic;
