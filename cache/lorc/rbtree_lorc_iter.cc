@@ -31,8 +31,8 @@ void RBTreeLogicallyOrderedRangeCacheIterator::SeekToFirst() {
         valid = false;
         return;
     }
-    current_range = cache->orderedRanges.begin();
-    if (current_range != cache->orderedRanges.end()) {
+    current_range = cache->ordered_physical_ranges.begin();
+    if (current_range != cache->ordered_physical_ranges.end()) {
         current_index = 0;
         valid = true;
     } else {
@@ -46,11 +46,11 @@ void RBTreeLogicallyOrderedRangeCacheIterator::SeekToLast() {
         valid = false;
         return;
     }
-    if (cache->orderedRanges.empty()) {
+    if (cache->ordered_physical_ranges.empty()) {
         valid = false;
         return;
     }
-    current_range = std::prev(cache->orderedRanges.end());
+    current_range = std::prev(cache->ordered_physical_ranges.end());
     current_index = (*current_range)->length() - 1;
     valid = true;
 }
@@ -63,17 +63,17 @@ void RBTreeLogicallyOrderedRangeCacheIterator::Seek(const Slice& target_internal
     }
     assert(target_internal_key.size() > PhysicalRange::internal_key_extra_bytes);
     Slice target_user_key = Slice(target_internal_key.data(), target_internal_key.size() - PhysicalRange::internal_key_extra_bytes);
-    current_range = cache->orderedRanges.upper_bound(target_user_key); // startKey > target
-    if (current_range != cache->orderedRanges.begin()) {
+    current_range = cache->ordered_physical_ranges.upper_bound(target_user_key); // startKey > target
+    if (current_range != cache->ordered_physical_ranges.begin()) {
         --current_range;
     }
     
-    if (current_range != cache->orderedRanges.end()) {
+    if (current_range != cache->ordered_physical_ranges.end()) {
         current_index = (*current_range)->find(target_user_key);
         if (current_index == -1) {
             ++current_range;
             current_index = 0;
-            if (current_range == cache->orderedRanges.end()) {
+            if (current_range == cache->ordered_physical_ranges.end()) {
                 valid = false;
                 return;
             }
@@ -92,12 +92,12 @@ void RBTreeLogicallyOrderedRangeCacheIterator::SeekForPrev(const Slice& target_i
     }
     assert(target_internal_key.size() > PhysicalRange::internal_key_extra_bytes);
     Slice target_user_key = Slice(target_internal_key.data(), target_internal_key.size() - PhysicalRange::internal_key_extra_bytes);
-    current_range = cache->orderedRanges.upper_bound(target_user_key);
-    if (current_range != cache->orderedRanges.begin()) {
+    current_range = cache->ordered_physical_ranges.upper_bound(target_user_key);
+    if (current_range != cache->ordered_physical_ranges.begin()) {
         --current_range;
     }
     
-    if (current_range != cache->orderedRanges.end() && (*current_range)->endUserKey() >= target_user_key) {
+    if (current_range != cache->ordered_physical_ranges.end() && (*current_range)->endUserKey() >= target_user_key) {
         current_index = (*current_range)->find(target_user_key);
         if (current_index == -1) {
             current_index = (*current_range)->length() - 1;
@@ -118,7 +118,7 @@ void RBTreeLogicallyOrderedRangeCacheIterator::Next() {
         current_index++;
     } else {
         ++current_range;
-        if (current_range != cache->orderedRanges.end()) {
+        if (current_range != cache->ordered_physical_ranges.end()) {
             current_index = 0;
         } else {
             valid = false;
@@ -135,7 +135,7 @@ void RBTreeLogicallyOrderedRangeCacheIterator::Prev() {
     if (current_index > 0) {
         current_index--;
     } else {
-        if (current_range == cache->orderedRanges.begin()) {
+        if (current_range == cache->ordered_physical_ranges.begin()) {
             valid = false;
         } else {
             --current_range;

@@ -1702,7 +1702,6 @@ enum ReadTier {
                           // Get and MultiGet and does not support iterators.
   kMemtableTier = 0x3,    // data in memtable. used for memtable-only iterators.
   kMemtableAndRangeCacheTier = 0x4,   // data in memtable and range cache
-  kWithRangeCacheTier = 0x5  // kReadAllTier + range cache
 };
 
 // Options that control read operations

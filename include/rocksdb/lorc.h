@@ -130,15 +130,6 @@ public:
     virtual ~LogicallyOrderedRangeCache();
 
     /**
-     * Try to merge a new range(from the whole range query result) with existing overlapping ranges.
-     * It will try to concat overlapping ranges into one large range
-     * Only the non-overlapping subranges of newRefRange will be materialized 
-     * (slices called ToString() to generate a PhysicalRange to be merged).
-     * TODO(jr): remove this method and releated logic
-     */
-    virtual void putOverlappingRefRange(ReferringRange&& newRefRange) = 0;
-
-    /**
      * Try to merge a new range(from range query result not in range cache)
      * The input range should be non-overlapping with existing ranges, but a gap range which can "fill" the gap of some existing ranges.
      */

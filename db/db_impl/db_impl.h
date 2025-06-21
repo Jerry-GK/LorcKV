@@ -704,7 +704,7 @@ class DBImpl : public DB {
                   std::vector<std::string>* values);
 
   // Scan using iterator over all levels (including range cache if exists).                
-  Status ScanWithIteratorInternal(const ReadOptions& options,
+  Status ScanWithAllTierIterator(const ReadOptions& options,
                                   ColumnFamilyHandle* column_family,
                                   const Slice& start_key,
                                   const Slice& end_key,
@@ -713,7 +713,7 @@ class DBImpl : public DB {
                                   std::vector<std::string>* values);
 
   // Scan afte pre-division. Retrieve ranges in the range cache directly, and scan using iterator on non-hit ranges.
-  Status ScanWithPredivisionInternal(const ReadOptions& options,
+  Status ScanWithPredivision(const ReadOptions& options,
                                       ColumnFamilyHandle* column_family,
                                       const Slice& start_key,
                                       const Slice& end_key,

@@ -2096,7 +2096,7 @@ InternalIterator* DBImpl::NewInternalIterator(
 
   // Range cache iterator between immutable memtables and L0
   if (s.ok() && super_version->range_cache != nullptr 
-      && (read_options.read_tier == kMemtableAndRangeCacheTier || read_options.read_tier == kWithRangeCacheTier)) {
+      && (read_options.read_tier == kMemtableAndRangeCacheTier)) {
     LogicallyOrderedRangeCacheIterator* range_cache_iter = super_version->range_cache->newLogicallyOrderedRangeCacheIterator(arena);
     merge_iter_builder.AddIterator(range_cache_iter);
   }
@@ -2312,12 +2312,11 @@ Status DBImpl::ScanImpl(const ReadOptions& _read_options,
   // TODO(jr): use scan_impl_options as parameter 
   auto lorc = column_family->GetRangeCache();
   _read_options.read_tier = kReadAllTier; // force read all tier for scan (may be reset internally)
-  // return ScanWithIteratorInternal(_read_options, column_family, start_key, end_key, len, keys, values);
-  Status s = ScanWithPredivisionInternal(_read_options, column_family, start_key, end_key, len, keys, values);
+  Status s = ScanWithPredivision(_read_options, column_family, start_key, end_key, len, keys, values);
   return s;
 }
 
-Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
+Status DBImpl::ScanWithPredivision(const ReadOptions& _read_options,
                         ColumnFamilyHandle* column_family,
                         const Slice& start_key,
                         const Slice& end_key,
@@ -2326,7 +2325,7 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
                         std::vector<std::string>* values) {
   auto lorc = column_family->GetRangeCache();
   if (!lorc) {
-    return ScanWithIteratorInternal(_read_options, column_family, start_key, end_key, len, keys, values);
+    return ScanWithAllTierIterator(_read_options, column_family, start_key, end_key, len, keys, values);
   }
   
   // TODO(jr): Add comments to explain this method whose logic is very complicated
@@ -2426,22 +2425,14 @@ Status DBImpl::ScanWithPredivisionInternal(const ReadOptions& _read_options,
   return Status();
 }
 
-Status DBImpl::ScanWithIteratorInternal(const ReadOptions& _read_options,
+Status DBImpl::ScanWithAllTierIterator(const ReadOptions& _read_options,
                         ColumnFamilyHandle* column_family,
                         const Slice& start_key,
                         const Slice& end_key,
                         size_t len,
                         std::vector<std::string>* keys,
                         std::vector<std::string>* values) {
-  // using range cache if needed
-  auto lorc = column_family->GetRangeCache();
-  if (lorc) {
-    _read_options.read_tier = kWithRangeCacheTier; // iterator merges all levels including range cache
-  }
-  const Snapshot* snapshot = _read_options.snapshot ? _read_options.snapshot : this->GetSnapshot();
-  ReferringRange ref_range(true, snapshot->GetSequenceNumber());
-  // ReferringRange ref_range(true, kMaxSequenceNumber);
-
+  // no range cache
   Iterator* it = this->NewIterator(_read_options, column_family);
   if (start_key.empty()) {
     it->SeekToFirst();
@@ -2452,20 +2443,14 @@ Status DBImpl::ScanWithIteratorInternal(const ReadOptions& _read_options,
   if (len != 0) {
     keys->reserve(len);
     values->reserve(len);
-    if (lorc) {
-      ref_range.reserve(len);
-    }
   }
 
   size_t count = 0;
   for (; it->Valid(); it->Next()) {
     keys->emplace_back(it->key().ToString());
     values->emplace_back(it->value().ToString());
-    if (lorc) {
-      ref_range.emplace(Slice(keys->back()), Slice(values->back()));
-    }
-
     count++;
+
     if (len !=0 && count >= len) {
       break;  // terminate by len
     }
@@ -2474,10 +2459,6 @@ Status DBImpl::ScanWithIteratorInternal(const ReadOptions& _read_options,
     }
   }
 
-  if (lorc) {
-    // try to put non-hit ranges to range cache
-    lorc->putOverlappingRefRange(std::move(ref_range));
-  }
   return Status();
 }
 

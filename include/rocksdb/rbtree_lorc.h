@@ -52,7 +52,6 @@ public:
     RBTreeLogicallyOrderedRangeCache(size_t capacity, LorcLogger::Level logger_level_ = LorcLogger::Level::DISABLE, PhysicalRangeType physical_range_type_ = PhysicalRangeType::VEC);
     ~RBTreeLogicallyOrderedRangeCache() override;
 
-    void putOverlappingRefRange(ReferringRange&& newRefRange) override;
     void putGapPhysicalRange(ReferringRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) override;
     bool updateEntry(const Slice& key, const Slice& value) override;
     void victim() override;
@@ -78,8 +77,8 @@ private:
     size_t downwardEstimateLengthInRangeCache(const Slice& start_key, const Slice& end_key, size_t remaining_length) const;
 
     friend class RBTreeLogicallyOrderedRangeCacheIterator;
-    std::set<std::unique_ptr<PhysicalRange>, PhysicalRangeComparator> orderedRanges;     // Container for ranges sorted by start key
-    std::multimap<int, std::string> lengthMap;  // Container for ranges sorted by length (for victim selection)
+    std::set<std::unique_ptr<PhysicalRange>, PhysicalRangeComparator> ordered_physical_ranges;     // Container for ranges sorted by start key
+    std::multimap<int, std::string> physical_range_length_map;  // Container for ranges sorted by length (for victim selection)
     uint64_t cache_timestamp;          // Timestamp for LRU-like functionality
     mutable std::shared_mutex cache_mutex_;
 };
