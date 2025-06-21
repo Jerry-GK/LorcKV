@@ -577,6 +577,8 @@ size_t RBTreeLogicallyOrderedRangeCache::downwardEstimateLengthInRangeCache(cons
         }
 
         assert(start_index <= end_index);
+        // minus delete length to downward estimate
+        int range_length = std::max(end_index - start_index + 1 - (int)(*it)->deleteLength(), 0);
         total_length += (end_index - start_index + 1);
 
         if (it == end_it) {

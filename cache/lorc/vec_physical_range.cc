@@ -238,8 +238,18 @@ PhysicalRangeUpdateResult VecPhysicalRange::update(const Slice& internal_key, co
         return PhysicalRangeUpdateResult::ERROR;
     }
     SequenceNumber seq_num = parsed_internal_key.sequence;
-    // Create new internal key with kTypeRangeCacheValue type
-    std::string new_internal_key_str = InternalKey(user_key, seq_num, kTypeRangeCacheValue).Encode().ToString();
+    // Create new internal key with correct type for range cache
+    ValueType type_in_range_cache;
+    bool is_delete_entry = (parsed_internal_key.type == kTypeDeletion || parsed_internal_key.type == kTypeSingleDeletion || parsed_internal_key.type == kTypeDeletionWithTimestamp);
+    if (is_delete_entry) {
+        // reserve deletion types for range cache
+        type_in_range_cache = parsed_internal_key.type; 
+    } else {
+        // parsed_internal_key.type should be kTypeValue here
+        // TODO(jr): is there any other type that should be considered in range cache?
+        type_in_range_cache = kTypeRangeCacheValue;  
+    }
+    std::string new_internal_key_str = InternalKey(user_key, seq_num, type_in_range_cache).Encode().ToString();
 
     // dont use internal_key for comparison (the last bit may be kTypeValue in Range Cache and kTypeBlobIndex in LSM)
     if (index >= 0 && userKeyAt(index) == user_key) {
@@ -247,6 +257,9 @@ PhysicalRangeUpdateResult VecPhysicalRange::update(const Slice& internal_key, co
         // update the value
         data->values[index] = value.ToString();
 
+        if (is_delete_entry) {
+            delete_length++;
+        }
         return PhysicalRangeUpdateResult::UPDATED;
     } else if (index == -1 || userKeyAt(index) != user_key) {
         assert(index == -1 || userKeyAt(index) > user_key);
@@ -268,6 +281,9 @@ PhysicalRangeUpdateResult VecPhysicalRange::update(const Slice& internal_key, co
         
         range_length++;
         byte_size += new_internal_key_str.size() + value.size();
+        if (is_delete_entry) {
+            delete_length++;
+        }
         
         return PhysicalRangeUpdateResult::INSERTED;
     }

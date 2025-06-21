@@ -280,9 +280,20 @@ PhysicalRangeUpdateResult ContinuousPhysicalRange::update(const Slice& internal_
     if (!s.ok()) {
         return PhysicalRangeUpdateResult::ERROR;
     }
-    
     SequenceNumber seq_num = parsed_internal_key.sequence;
-    std::string new_internal_key_str = InternalKey(user_key, seq_num, kTypeRangeCacheValue).Encode().ToString();
+    // Create new internal key with correct type for range cache
+    ValueType type_in_range_cache;
+    bool is_delete_entry = (parsed_internal_key.type == kTypeDeletion || parsed_internal_key.type == kTypeSingleDeletion || parsed_internal_key.type == kTypeDeletionWithTimestamp);
+    if (is_delete_entry) {
+        // reserve deletion types for range cache
+        type_in_range_cache = parsed_internal_key.type; 
+    } else {
+        // parsed_internal_key.type should be kTypeValue here
+        // TODO(jr): is there any other type that should be considered in range cache?
+        type_in_range_cache = kTypeRangeCacheValue;  
+    }
+    std::string new_internal_key_str = InternalKey(user_key, seq_num, type_in_range_cache).Encode().ToString();
+
 
     if (userKeyAt(index) == user_key) {
         // Update key in continuous buffer (same size, so in-place)
@@ -294,9 +305,16 @@ PhysicalRangeUpdateResult ContinuousPhysicalRange::update(const Slice& internal_
         
         // Rebuild affected slices
         rebuildSlicesAt(index);
+
+        if (is_delete_entry) {
+            delete_length++;
+        }
         return PhysicalRangeUpdateResult::UPDATED;
     } else if (userKeyAt(index) != user_key) {
         // continuous physical range does NOT support random insertion
+        if (is_delete_entry) {
+            delete_length++;
+        }
         return PhysicalRangeUpdateResult::UNABLE_TO_INSERT;
     }
     

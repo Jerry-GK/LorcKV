@@ -29,10 +29,11 @@ protected:
     mutable bool valid;
     mutable size_t range_length; // size in length  
     mutable size_t byte_size; // size in bytes (internal keys + values)
+    mutable size_t delete_length; // size in length for deletion
     mutable int timestamp;
     
 public:
-    PhysicalRange(bool valid_ = false) : valid(valid_), range_length(0), byte_size(0), timestamp(0) {}
+    PhysicalRange(bool valid_ = false) : valid(valid_), range_length(0), byte_size(0), delete_length(0), timestamp(0) {}
     virtual ~PhysicalRange() = default;
     
     virtual const Slice& startUserKey() const = 0;
@@ -64,6 +65,7 @@ public:
 
     size_t length() const { return range_length; }
     size_t byteSize() const { return byte_size; }
+    size_t deleteLength() const { return delete_length; }
     bool isValid() const { return valid; }
     int getTimestamp() const { return timestamp; }
     void setTimestamp(int timestamp_) const { this->timestamp = timestamp_; }
