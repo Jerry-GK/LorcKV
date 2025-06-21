@@ -148,10 +148,10 @@ int main() {
         std::cout << "Range length between " << min_range_query_len << " and " << max_range_query_len << std::endl;
         
         for (int i = 0; i < num_range_queries; i++) {
-            // 随机生成范围长度
+            // Generate random range length
             int query_length = range_len_dist(gen);
             
-            // 随机生成起始键，确保不会超出有效范围
+            // Generate random start key, ensure it doesn't exceed valid range
             int max_start = end_key - query_length;
             std::uniform_int_distribution<> start_key_dist(start_key, max_start);
             int query_start_key = start_key_dist(gen);
@@ -161,13 +161,13 @@ int main() {
             std::cout << "Query " << (i+1) << ": start key = " << query_start_key 
                       << ", length = " << query_length << std::endl;
                       
-            // 开始计时
+            // Start timing
             auto query_start = high_resolution_clock::now();
             
-            // 执行范围查询
+            // Execute range query
             execute_scan(db, options, start_key_str, query_length);
             
-            // 结束计时
+            // End timing
             auto query_end = high_resolution_clock::now();
             duration<double> query_time = duration_cast<duration<double>>(query_end - query_start);
             
@@ -176,7 +176,7 @@ int main() {
                 " seconds, avg time = " << total_query_time / (i + 1) << "seconds" <<  std::endl;
         }
         
-        // 输出平均查询时间
+        // Output average query time
         double avg_query_time = total_query_time / num_range_queries;
         std::cout << "\nAverage query time for " << num_range_queries 
                   << " random range queries: " << avg_query_time << " seconds\n" << std::endl;

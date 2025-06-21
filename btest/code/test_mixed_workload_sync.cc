@@ -203,7 +203,7 @@ void warmUpEnd() {
 }
 
 int main() {
-    // 定义CSV文件路径
+    // Define CSV file path
     string csv_path = "./csv/scan_performance";
     if (enable_blob) {
         csv_path += "_blobdb";
@@ -289,7 +289,7 @@ int main() {
     
     // Execute operations based on flags
     if (do_scan) {
-        // 检查文件是否存在，如果存在则删除
+        // Check if file exists, delete if it does
         std::ifstream file_check(csv_path);
         if (file_check.good()) {
             file_check.close();
@@ -308,9 +308,9 @@ int main() {
         std::uniform_real_distribution<> update_prob(0.0, 1.0);
         
         double total_query_time = 0.0;
-        double total_update_time = 0.0;  // 记录总更新时间
-        int total_updates = 0;           // 记录总更新次数
-        int total_updated_records = 0;   // 记录总更新数据条数
+        double total_update_time = 0.0;  // Record total update time
+        int total_updates = 0;           // Record total number of updates
+        int total_updated_records = 0;   // Record total number of updated records
         
         std::cout << "Executing " << num_range_queries << " random range queries..." << std::endl;
         std::cout << "Range length between " << min_range_query_len << " and " << max_range_query_len << std::endl;
@@ -319,14 +319,14 @@ int main() {
         bool is_warmup_phase = true;
 
         for (int i = 0; i < num_range_queries; i++) {
-            // 随机生成范围长度
+            // Generate random range length
             int query_length = range_len_dist(gen);
             
-            // 随机生成起始键，确保不会超出有效范围
+            // Generate random start key, ensure it doesn't exceed valid range
             int max_start = end_key - query_length + 1;
             const int query_key_left_bound = hot_data_precentage > 0.99 ? start_key : end_key - total_len * hot_data_precentage;
             assert(query_key_left_bound >= start_key && query_key_left_bound <= max_start);
-            // 确保起始键在有效范围内
+            // Ensure start key is within valid range
             std::uniform_int_distribution<> start_key_dist(query_key_left_bound, max_start);
             int query_start_key = start_key_dist(gen);
 
@@ -347,7 +347,7 @@ int main() {
             
             std::string start_key_str = gen_key(query_start_key);
             
-            // 计算预热阶段查询数量
+            // Calculate warmup phase query count
             if (is_warmup_phase && i >= warmup_queries) {
                 is_warmup_phase = false;
                 warmUpEnd();
@@ -360,7 +360,7 @@ int main() {
             }
             std::cout << std::endl;
             
-            // 在执行扫描前，根据概率决定是否进行更新
+            // Before executing scan, decide whether to perform update based on probability
             if (do_update && update_prob(gen) < p_update) {
                 std::cout << "Performing random update before query " << (i+1) << std::endl;
                 
@@ -374,17 +374,17 @@ int main() {
                 total_updated_records += num_update;
             }
             
-            // 开始计时 - 只对非预热阶段的查询计时
+            // Start timing - only time queries in non-warmup phase
             auto query_start = high_resolution_clock::now();
             
-            // 执行范围查询
+            // Execute range query
             execute_scan(db, options, start_key_str, query_length);
             
-            // 结束计时
+            // End timing
             auto query_end = high_resolution_clock::now();
             duration<double> query_time = duration_cast<duration<double>>(query_end - query_start);
             
-            // 只统计非预热阶段的查询时间
+            // Only count query time for non-warmup phase
             if (!is_warmup_phase) {
                 total_query_time += query_time.count();
             }
@@ -392,7 +392,7 @@ int main() {
             cout << "\tScan total time: " << query_time.count() << " seconds" << endl;
             if (!is_warmup_phase) {
                 std::cout << "\tAvg scan time = " << total_query_time / (i + 1 - warmup_queries) << " seconds";
-                // 将查询次数和当前扫描时间写入CSV文件
+                // Write query count and current scan time to CSV file
                 if (csv_file.is_open()) {
                     csv_file << (i + 1 - warmup_queries) << "," << query_time.count() << std::endl;
                 }
@@ -402,12 +402,12 @@ int main() {
             std::cout << std::endl;
         }
         
-        // 关闭CSV文件
+        // Close CSV file
         if (csv_file.is_open()) {
             csv_file.close();
         }
                   
-        // 输出更新统计信息
+        // Output update statistics
         if (total_updates > 0) {
             double avg_update_time = total_update_time / total_updates;
             std::cout << "Total updates: " << total_updates << " times, " 
@@ -416,7 +416,7 @@ int main() {
                       << " seconds, Total update time: " << total_update_time << " seconds" << std::endl;
         }
 
-        // 输出平均查询时间和更新统计
+        // Output average query time and update statistics
         double avg_query_time = total_query_time / (num_range_queries - warmup_queries);
         std::cout << "\nAverage query time for " << (num_range_queries - warmup_queries) 
                   << " random range queries (after " << warmup_queries << " warmup queries): " 

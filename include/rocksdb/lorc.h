@@ -237,7 +237,7 @@ protected:
     LogicalRangesView ranges_view;
     size_t current_size;
     size_t total_range_length;
-    SequenceNumber cache_seq_num; // the max key sequence number in the cache
+    SequenceNumber cache_seq_num; // the sequence number of the range cache
 
     bool enable_statistic; // initialize to false
     CacheStatistic cache_statistic;
