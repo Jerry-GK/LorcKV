@@ -2360,6 +2360,7 @@ Status DBImpl::ScanWithPredivision(const ReadOptions& _read_options,
     Slice range_start_key = range.startUserKey();
     Slice range_end_key = range.endUserKey();
     bool in_range_cache = range.isInRangeCache();
+    auto origin_read_tier = _read_options.read_tier;
     if (in_range_cache) {
       _read_options.read_tier = kMemtableAndRangeCacheTier; // scan with memtable and range cache without iter on SSTs on hit ranges
     } else {
@@ -2425,6 +2426,8 @@ Status DBImpl::ScanWithPredivision(const ReadOptions& _read_options,
         lorc->putGapPhysicalRange(std::move(ref_range), true, true, true, range_start_key.ToString(), range_end_key.ToString());
       }
     }
+
+    _read_options.read_tier = origin_read_tier; // restore read tier
   }
 
   if (lorc) {
@@ -2696,6 +2699,37 @@ Status DBImpl::GetImpl(const ReadOptions& read_options, const Slice& key,
       return s;
     }
   }
+
+  // Try to get in range cache before going to SSTs
+  if (!done && sv->range_cache != nullptr) {
+    // TODO(jr): PERF INFO
+
+    // range cache is now incompatible with timestamp read option or range deletion
+    if (read_options.timestamp) {
+      return Status::NotSupported("Cannot use range cache with timestamp read option");
+    }
+    // TODO(jr): conflict with range deletion
+
+    bool found_in_range_cache = false;
+    Slice internal_key = lkey.internal_key(); // type of internal_key is kValueTypeForSeek
+    if (get_impl_options.get_value) {
+      found_in_range_cache = sv->range_cache->Get(internal_key, get_impl_options.value ? get_impl_options.value->GetSelf() : nullptr, &s);
+    } else {
+      found_in_range_cache = sv->range_cache->Get(internal_key, nullptr, &s);
+    }
+
+    if (s.ok()) {
+      done = done ? true : found_in_range_cache;
+      if (get_impl_options.value) {
+        get_impl_options.value->PinSelf();
+      }
+    } else {
+      assert(false);
+      ReturnAndCleanupSuperVersion(cfd, sv);
+      return s;
+    }
+  }
+
   TEST_SYNC_POINT("DBImpl::GetImpl:PostMemTableGet:0");
   TEST_SYNC_POINT("DBImpl::GetImpl:PostMemTableGet:1");
   PinnedIteratorsManager pinned_iters_mgr;

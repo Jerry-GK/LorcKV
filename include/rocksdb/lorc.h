@@ -9,6 +9,7 @@
 #include "rocksdb/logical_range.h"
 #include "rocksdb/physical_range.h"
 #include "rocksdb/ref_range.h"
+#include "rocksdb/status.h"
 
 namespace ROCKSDB_NAMESPACE {
 class LorcLogger {
@@ -210,6 +211,12 @@ public:
      * Get a new PhysicalRange cache iterator.
      */
     virtual LogicallyOrderedRangeCacheIterator* newLogicallyOrderedRangeCacheIterator(Arena* arena) const = 0;
+
+    /**
+     * Get from range cache.
+     * Return false if not found.
+     */
+    virtual bool Get(const Slice& internal_key, std::string* value, Status* s) const = 0;
 
     virtual void printAllRangesWithKeys() const = 0;
 

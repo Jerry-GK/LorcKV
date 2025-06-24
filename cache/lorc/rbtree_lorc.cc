@@ -166,6 +166,73 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
     return true;
 }
 
+bool RBTreeLogicallyOrderedRangeCache::Get(const Slice& internal_key, std::string* value, Status* s) const {
+    std::shared_lock<std::shared_mutex> lock(cache_mutex_); // Acquire shared lock for reading
+    assert(s);
+    
+    // Extract user key from internal key
+    ParsedInternalKey parsed_internal_key;
+    Status status = ParseInternalKey(internal_key, &parsed_internal_key, false);
+    if (!status.ok()) {
+        *s = status;
+        assert(false);
+        return false;
+    }
+    Slice user_key = parsed_internal_key.user_key;
+    SequenceNumber key_seq_num = parsed_internal_key.sequence;
+    ValueType key_type = parsed_internal_key.type;
+
+    if (key_seq_num < this->cache_seq_num) {
+        // The key is older than the cache sequence number, not found
+        logger.warn("Get: Key " + user_key.ToString() + " with sequence number " + std::to_string(key_seq_num) + " is older than cache sequence number " + std::to_string(this->cache_seq_num));
+        *s = Status::OK();
+        return false;
+    }
+
+    if (key_type != kValueTypeForSeek) {
+        // The key type is not for seeking, return not found
+        logger.error("Get: Key " + user_key.ToString() + " is not a valid seek key (type = " + std::to_string(static_cast<unsigned char>(key_type)) + ")");
+        *s = Status::NotFound("Key is not a valid seek key");
+        assert(false);
+        return false;
+    }
+    
+    // Find the physical range that may contain the key
+    auto it = ordered_physical_ranges.upper_bound(user_key);
+    if (it != ordered_physical_ranges.begin()) {
+        it--;
+    }
+    
+    // Check if we found a valid range and the key is within bounds
+    if (it == ordered_physical_ranges.end() || (*it)->startUserKey() > user_key || (*it)->endUserKey() < user_key) {
+        // Key not found in any physical range
+        *s = Status::OK();
+        return false;
+    }
+    
+    // Use find function to locate the exact position of the key
+    int index = (*it)->find(user_key);
+    if (index < 0 || (size_t)index >= (*it)->length()) {
+        assert(false);
+        logger.error("Get: Key " + user_key.ToString() + " not found in PhysicalRange: " + (*it)->toString());
+        *s = Status::NotFound("Key not found in PhysicalRange");
+        return false;
+    }
+    
+    // Check if the found key exactly matches our target key
+    if ((*it)->userKeyAt(index) != user_key) {
+        *s = Status::OK();
+        return false;
+    }
+    
+    // Key found, retrieve the value
+    if (value) {
+        *value = (*it)->valueAt(index).ToString();
+    }
+    *s = Status::OK();
+    return true;
+}
+
 void RBTreeLogicallyOrderedRangeCache::tryVictim() {    
     std::unique_lock<std::shared_mutex> lock(cache_mutex_); // Acquire unique lock for writing
     // If no ranges exist, nothing to evict

@@ -57,6 +57,8 @@ public:
     void victim() override;
     void tryVictim() override;
     
+    bool Get(const Slice& internal_key, std::string* value, Status* s) const override;
+    
     LogicallyOrderedRangeCacheIterator* newLogicallyOrderedRangeCacheIterator(Arena* arena) const override;
 
     /**
