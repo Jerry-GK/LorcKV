@@ -15,14 +15,14 @@ RBTreeLogicallyOrderedRangeCache::RBTreeLogicallyOrderedRangeCache(size_t capaci
 }
 
 RBTreeLogicallyOrderedRangeCache::~RBTreeLogicallyOrderedRangeCache() {
-    std::unique_lock<std::shared_mutex> lock(cache_mutex_); // Lock for destruction
+    std::unique_lock<std::shared_mutex> lock(logical_ranges_mutex_);
     ordered_physical_ranges.clear();
     physical_range_length_map.clear();
     ranges_view.clear();
 }
 
 void RBTreeLogicallyOrderedRangeCache::putGapPhysicalRange(ReferringRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) {
-    std::unique_lock<std::shared_mutex> lock(cache_mutex_); // Acquire unique lock for writing
+    std::unique_lock<std::shared_mutex> lock(logical_ranges_mutex_);
     std::chrono::high_resolution_clock::time_point start_time;
 
     std::unique_ptr<PhysicalRange> newRange;
@@ -58,7 +58,7 @@ void RBTreeLogicallyOrderedRangeCache::putGapPhysicalRange(ReferringRange&& newR
     }
 
     // Update the cache sequence number after putting a new range
-    this->cache_seq_num = std::max(this->cache_seq_num, newRefRange.getSeqNum());
+    this->setCacheSeqNum(std::max(this->getCacheSeqNum(), newRefRange.getSeqNum()));
 
     // do NOT do victim here (call victim externally after filling all gap ranges)
     // while (this->current_size > this->capacity) {
@@ -81,8 +81,8 @@ void RBTreeLogicallyOrderedRangeCache::putGapPhysicalRange(ReferringRange&& newR
 }
 
 bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, const Slice& value) {
-    // TODO(jr): lock free here
-    std::unique_lock<std::shared_mutex> lock(cache_mutex_);
+    // updateEntry takes read lock for logical ranges
+    std::shared_lock<std::shared_mutex> lock(logical_ranges_mutex_);
     Slice user_key = Slice(internal_key.data(), internal_key.size() - PhysicalRange::internal_key_extra_bytes);
 
     // Find the logical range that may contain the user key
@@ -162,12 +162,12 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
 
     assert(updateResult == PhysicalRangeUpdateResult::UPDATED || updateResult == PhysicalRangeUpdateResult::INSERTED);
     // Update the cache sequence number after updating an entry
-    this->cache_seq_num = std::max(this->cache_seq_num, key_seq_num);
+    this->setCacheSeqNum(std::max(this->getCacheSeqNum(), key_seq_num));
     return true;
 }
 
 bool RBTreeLogicallyOrderedRangeCache::Get(const Slice& internal_key, std::string* value, Status* s) const {
-    std::shared_lock<std::shared_mutex> lock(cache_mutex_); // Acquire shared lock for reading
+    std::shared_lock<std::shared_mutex> lock(logical_ranges_mutex_); // Acquire shared lock for reading
     assert(s);
     
     // Extract user key from internal key
@@ -182,9 +182,9 @@ bool RBTreeLogicallyOrderedRangeCache::Get(const Slice& internal_key, std::strin
     SequenceNumber key_seq_num = parsed_internal_key.sequence;
     ValueType key_type = parsed_internal_key.type;
 
-    if (key_seq_num < this->cache_seq_num) {
+    if (key_seq_num < this->getCacheSeqNum()) {
         // The key is older than the cache sequence number, not found
-        logger.warn("Get: Key " + user_key.ToString() + " with sequence number " + std::to_string(key_seq_num) + " is older than cache sequence number " + std::to_string(this->cache_seq_num));
+        logger.warn("Get: Key " + user_key.ToString() + " with sequence number " + std::to_string(key_seq_num) + " is older than cache sequence number " + std::to_string(this->getCacheSeqNum()));
         *s = Status::OK();
         return false;
     }
@@ -234,7 +234,7 @@ bool RBTreeLogicallyOrderedRangeCache::Get(const Slice& internal_key, std::strin
 }
 
 void RBTreeLogicallyOrderedRangeCache::tryVictim() {    
-    std::unique_lock<std::shared_mutex> lock(cache_mutex_); // Acquire unique lock for writing
+    std::unique_lock<std::shared_mutex> lock(logical_ranges_mutex_);
     // If no ranges exist, nothing to evict
     if (physical_range_length_map.empty() || ordered_physical_ranges.empty()) {
         return;
@@ -303,7 +303,7 @@ void RBTreeLogicallyOrderedRangeCache::victim() {
 }
 
 void RBTreeLogicallyOrderedRangeCache::pinRange(std::string startKey) {
-    std::unique_lock<std::shared_mutex> lock(cache_mutex_);
+    std::shared_lock<std::shared_mutex> lock(logical_ranges_mutex_);
     auto it = ordered_physical_ranges.find(startKey);
     if (it != ordered_physical_ranges.end() && (*it)->startUserKey() == startKey) {
         // update the timestamp
@@ -312,7 +312,7 @@ void RBTreeLogicallyOrderedRangeCache::pinRange(std::string startKey) {
 }
 
 LogicallyOrderedRangeCacheIterator* RBTreeLogicallyOrderedRangeCache::newLogicallyOrderedRangeCacheIterator(Arena* arena) const {
-    std::shared_lock<std::shared_mutex> lock(cache_mutex_); 
+    std::shared_lock<std::shared_mutex> lock(logical_ranges_mutex_); 
     if (arena == nullptr) {
         return new RBTreeLogicallyOrderedRangeCacheIterator(this);
     }
@@ -349,7 +349,7 @@ void RBTreeLogicallyOrderedRangeCache::printAllLogicalRanges() const {
 }
 
 void RBTreeLogicallyOrderedRangeCache::printAllRangesWithKeys() const {
-    std::shared_lock<std::shared_mutex> lock(cache_mutex_); // Acquire shared lock for reading
+    std::shared_lock<std::shared_mutex> lock(logical_ranges_mutex_); // Acquire shared lock for reading
     if (!logger.outputInLevel(LorcLogger::Level::DEBUG)) {
         return;
     }
@@ -373,7 +373,7 @@ void RBTreeLogicallyOrderedRangeCache::printAllRangesWithKeys() const {
 }
 
 std::vector<LogicalRange> RBTreeLogicallyOrderedRangeCache::divideLogicalRange(const Slice& start_key, size_t len, const Slice& end_key) const {
-    std::shared_lock<std::shared_mutex> lock(cache_mutex_);
+    std::shared_lock<std::shared_mutex> lock(logical_ranges_mutex_);
     
     std::vector<LogicalRange> result;
     size_t total_length_in_range_cache = 0;

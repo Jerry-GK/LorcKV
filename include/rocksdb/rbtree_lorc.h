@@ -82,7 +82,7 @@ private:
     std::set<std::unique_ptr<PhysicalRange>, PhysicalRangeComparator> ordered_physical_ranges;     // Container for ranges sorted by start key
     std::multimap<int, std::string> physical_range_length_map;  // Container for ranges sorted by length (for victim selection)
     uint64_t cache_timestamp;          // Timestamp for LRU-like functionality
-    mutable std::shared_mutex cache_mutex_;
+    mutable std::shared_mutex logical_ranges_mutex_;
 };
 
 }  // namespace ROCKSDB_NAMESPACE

@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <shared_mutex>
 #include "rocksdb/physical_range.h"
 #include "rocksdb/ref_range.h"
 #include "rocksdb/slice.h"
@@ -39,6 +40,7 @@ private:
         std::vector<Slice> value_slices;
     };
     std::shared_ptr<RangeData> data;
+    mutable std::shared_mutex physical_range_mutex_;
 
 private:
     ContinuousPhysicalRange(std::shared_ptr<RangeData> data, size_t length);
@@ -50,6 +52,10 @@ private:
     void updateValueAt(size_t index, const Slice& new_value) const;
     void rebuildSlices() const;
     void rebuildSlicesAt(size_t index) const;
+    
+    // Internal functions without locking for internal use
+    const Slice& userKeyAtInternal(size_t index) const;
+    int findInternal(const Slice& key) const;
 
 public:
     ContinuousPhysicalRange(bool valid = false);
@@ -63,7 +69,6 @@ public:
 
     // Static factory functions
     static std::unique_ptr<ContinuousPhysicalRange> buildFromReferringRange(const ReferringRange& refRange);
-    static std::unique_ptr<ContinuousPhysicalRange> dumpSubRangeFromReferringRange(const ReferringRange& refRange, const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded);
 
     // Override pure virtual functions from PhysicalRange
     const Slice& startUserKey() const override;

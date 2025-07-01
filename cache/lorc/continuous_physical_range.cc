@@ -12,6 +12,7 @@
 namespace ROCKSDB_NAMESPACE {
 
 std::string ContinuousPhysicalRange::toString() const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     std::string str = "< " + ToStringPlain(this->startUserKey().ToString()) + " -> " + ToStringPlain(this->endUserKey().ToString()) + " >"
         + " ( len = " + std::to_string(this->length()) + " )";
     return str;
@@ -180,95 +181,58 @@ std::unique_ptr<ContinuousPhysicalRange> ContinuousPhysicalRange::buildFromRefer
     return newRange;
 }
 
-std::unique_ptr<ContinuousPhysicalRange> ContinuousPhysicalRange::dumpSubRangeFromReferringRange(const ReferringRange& refRange, const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded) {
-    assert(refRange.isValid() && refRange.length() > 0 && refRange.startKey() <= startKey && startKey <= endKey && endKey <= refRange.endKey());
-
-    // find the start position of the subrange
-    int start_pos = refRange.find(startKey);
-    if (start_pos < 0 || (size_t)start_pos >= refRange.length()) {
-        assert(false);
-        return std::make_unique<ContinuousPhysicalRange>(false);
-    }
-    
-    if (refRange.keyAt(start_pos) == startKey && !leftIncluded) {
-        start_pos++;
-    }
-    
-    int end_pos = refRange.find(endKey);
-    if (end_pos < 0) {
-        assert(false);
-        return std::make_unique<ContinuousPhysicalRange>(false);
-    }
-    
-    if (refRange.keyAt(end_pos) == endKey) {
-        if (!rightIncluded) {
-            end_pos--;
-        }
-    } else {
-        end_pos--;
-    }
-
-    if (start_pos > end_pos || (size_t)start_pos >= refRange.length() || end_pos < 0) {
-        // cant find entries in the range
-        return std::make_unique<ContinuousPhysicalRange>(false);
-    }
-    
-    auto result = std::make_unique<ContinuousPhysicalRange>(true);
-    size_t num_elements = end_pos - start_pos + 1;
-    result->initializeFromReferringRangeSubset(refRange, start_pos, end_pos);
-    
-    result->byte_size = 0;
-    for (int i = start_pos; i <= end_pos; i++) {
-        std::string internal_key_str = InternalKey(refRange.keyAt(i), refRange.getSeqNum(), kTypeRangeCacheValue).Encode().ToString();
-        result->emplaceInternal(Slice(internal_key_str), refRange.valueAt(i), i - start_pos);
-        result->byte_size += internal_key_str.size() + refRange.valueAt(i).size();
-    }
-    
-    result->range_length = num_elements;
-    result->rebuildSlices();
-    return result;
-}
-
 // Override virtual functions
 const Slice& ContinuousPhysicalRange::startUserKey() const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > 0 && data->key_sizes.size() > 0 && data->key_sizes[0] > internal_key_extra_bytes);
     return this->data->user_key_slices[0];
 }
 
 const Slice& ContinuousPhysicalRange::endUserKey() const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > 0 && data->key_sizes.size() > 0 && data->key_sizes[range_length - 1] > internal_key_extra_bytes);
     return this->data->user_key_slices[range_length - 1];
 }
 
 const Slice& ContinuousPhysicalRange::startInternalKey() const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > 0 && data->key_sizes.size() > 0);
     return this->data->internal_key_slices[0];
 }
 
 const Slice& ContinuousPhysicalRange::endInternalKey() const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > 0 && data->key_sizes.size() > 0);
     return this->data->internal_key_slices[range_length - 1];
 }
 
 const Slice& ContinuousPhysicalRange::internalKeyAt(size_t index) const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > index);
     return this->data->internal_key_slices[index];
 }
 
 const Slice& ContinuousPhysicalRange::userKeyAt(size_t index) const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
+    return userKeyAtInternal(index);
+}
+
+const Slice& ContinuousPhysicalRange::userKeyAtInternal(size_t index) const {
     assert(valid && range_length > index && data->key_sizes[index] > internal_key_extra_bytes);
     return this->data->user_key_slices[index];
 }
 
 const Slice& ContinuousPhysicalRange::valueAt(size_t index) const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > index);
     return this->data->value_slices[index];
 }
 
 PhysicalRangeUpdateResult ContinuousPhysicalRange::update(const Slice& internal_key, const Slice& value) const {
+    std::unique_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > 0 && internal_key.size() > internal_key_extra_bytes);    
     Slice user_key = Slice(internal_key.data(), internal_key.size() - PhysicalRange::internal_key_extra_bytes);
-    int index = find(user_key);
+    int index = findInternal(user_key);
     if (index < 0) {
         assert(false);
         return PhysicalRangeUpdateResult::OUT_OF_RANGE;
@@ -295,7 +259,7 @@ PhysicalRangeUpdateResult ContinuousPhysicalRange::update(const Slice& internal_
     std::string new_internal_key_str = InternalKey(user_key, seq_num, type_in_range_cache).Encode().ToString();
 
 
-    if (userKeyAt(index) == user_key) {
+    if (userKeyAtInternal(index) == user_key) {
         // Update key in continuous buffer (same size, so in-place)
         memcpy(data->keys_buffer.get() + data->key_offsets[index], 
                new_internal_key_str.data(), new_internal_key_str.size());
@@ -310,7 +274,7 @@ PhysicalRangeUpdateResult ContinuousPhysicalRange::update(const Slice& internal_
             delete_length++;
         }
         return PhysicalRangeUpdateResult::UPDATED;
-    } else if (userKeyAt(index) != user_key) {
+    } else if (userKeyAtInternal(index) != user_key) {
         // continuous physical range does NOT support random insertion
         if (is_delete_entry) {
             delete_length++;
@@ -322,6 +286,11 @@ PhysicalRangeUpdateResult ContinuousPhysicalRange::update(const Slice& internal_
 }
 
 int ContinuousPhysicalRange::find(const Slice& key) const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
+    return findInternal(key);
+}
+
+int ContinuousPhysicalRange::findInternal(const Slice& key) const {
     assert(valid && range_length > 0 && key.size() > 0);
 
     if (!valid || range_length == 0) {
@@ -333,7 +302,7 @@ int ContinuousPhysicalRange::find(const Slice& key) const {
     
     while (left <= right) {
         int mid = left + (right - left) / 2;
-        Slice mid_user_key = userKeyAt(mid); // use user key for inner comparison
+        Slice mid_user_key = userKeyAtInternal(mid);
         if (mid_user_key == key) {
             return mid;
         } else if (mid_user_key < key) {
@@ -350,6 +319,7 @@ int ContinuousPhysicalRange::find(const Slice& key) const {
 }
 
 void ContinuousPhysicalRange::reserve(size_t len) {
+    std::unique_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid);
     data->key_offsets.reserve(len);
     data->key_sizes.reserve(len);

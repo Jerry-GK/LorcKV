@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <shared_mutex>
 #include "rocksdb/physical_range.h"
 #include "rocksdb/ref_range.h"
 #include "rocksdb/slice.h"
@@ -23,12 +24,17 @@ private:
         std::vector<Slice> value_slices;
     };
     std::shared_ptr<RangeData> data;
+    mutable std::shared_mutex physical_range_mutex_;
 
 private:
     VecPhysicalRange(std::shared_ptr<RangeData> data, size_t length);
     
     // Helper functions for vec storage management
     void emplaceInternal(const Slice& internal_key, const Slice& value);
+    
+    // Internal functions without locking for internal use
+    const Slice& userKeyAtInternal(size_t index) const;
+    int findInternal(const Slice& key) const;
 
 public:
     VecPhysicalRange(bool valid = false);
@@ -42,7 +48,6 @@ public:
 
     // Static factory functions
     static std::unique_ptr<VecPhysicalRange> buildFromReferringRange(const ReferringRange& refRange);
-    static std::unique_ptr<VecPhysicalRange> dumpSubRangeFromReferringRange(const ReferringRange& refRange, const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded);
 
     // Override pure virtual functions from PhysicalRange
     const Slice& startUserKey() const override;

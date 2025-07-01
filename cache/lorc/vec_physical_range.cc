@@ -12,6 +12,7 @@
 namespace ROCKSDB_NAMESPACE {
 
 std::string VecPhysicalRange::toString() const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     std::string str = "< " + ToStringPlain(this->startUserKey().ToString()) + " -> " + ToStringPlain(this->endUserKey().ToString()) + " >"
         + " ( len = " + std::to_string(this->length()) + " )";
     return str;
@@ -136,99 +137,63 @@ std::unique_ptr<VecPhysicalRange> VecPhysicalRange::buildFromReferringRange(cons
     return newRange;
 }
 
-std::unique_ptr<VecPhysicalRange> VecPhysicalRange::dumpSubRangeFromReferringRange(const ReferringRange& refRange, const Slice& startKey, const Slice& endKey, bool leftIncluded, bool rightIncluded) {
-    assert(refRange.isValid() && refRange.length() > 0 && refRange.startKey() <= startKey && startKey <= endKey && endKey <= refRange.endKey());
-
-    // find the start position of the subrange
-    int start_pos = refRange.find(startKey);
-    if (start_pos < 0 || (size_t)start_pos >= refRange.length()) {
-        assert(false);
-        return std::make_unique<VecPhysicalRange>(false);
-    }
-
-    if (refRange.keyAt(start_pos) == startKey && !leftIncluded) {
-        start_pos++;
-    }
-
-    int end_pos = refRange.find(endKey);
-    if (end_pos < 0) {
-        assert(false);
-        return std::make_unique<VecPhysicalRange>(false);
-    }
-
-    if (refRange.keyAt(end_pos) == endKey) {
-        if (!rightIncluded) {
-            end_pos--;
-        }
-    } else {
-        end_pos--;
-    }
-
-    if (start_pos > end_pos || (size_t)start_pos >= refRange.length() || end_pos < 0) {
-        // cant find entries in the range
-        return std::make_unique<VecPhysicalRange>(false);
-    }
-
-    auto result = std::make_unique<VecPhysicalRange>(true);
-    size_t num_elements = end_pos - start_pos + 1;
-    result->reserve(num_elements);
-
-    // actually copy the subrange data
-    for (int i = start_pos; i <= end_pos; i++) {
-        // use kTypeRangeCacheValue as the value type for internal keys of range cache
-        std::string internal_key_str = InternalKey(refRange.keyAt(i), refRange.getSeqNum(), kTypeRangeCacheValue).Encode().ToString();
-        result->emplaceInternal(Slice(internal_key_str), refRange.valueAt(i));
-    }
-
-    return result;
-}
-
 const Slice& VecPhysicalRange::startUserKey() const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > 0 && data->internal_keys.size() > 0 && data->internal_keys[0].size() > internal_key_extra_bytes);
-    // return Slice(data->internal_keys[0].data(), data->internal_keys[0].size() - internal_key_extra_bytes);
     return this->data->user_key_slices[0];
 }
 
 const Slice& VecPhysicalRange::endUserKey() const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > 0 && data->internal_keys.size() > 0 && data->internal_keys[range_length - 1].size() > internal_key_extra_bytes);
     // return Slice(data->internal_keys[range_length - 1].data(), data->internal_keys[range_length - 1].size() - internal_key_extra_bytes);
     return this->data->user_key_slices[range_length - 1];
 }  
 
 const Slice& VecPhysicalRange::startInternalKey() const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > 0 && data->internal_keys.size() > 0);
     // return Slice(data->internal_keys[0]);
     return this->data->internal_key_slices[0];
 }
 
 const Slice& VecPhysicalRange::endInternalKey() const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > 0 && data->internal_keys.size() > 0);
     // return Slice(data->internal_keys[range_length - 1]);
     return this->data->internal_key_slices[range_length - 1];
 }   
 
 const Slice& VecPhysicalRange::internalKeyAt(size_t index) const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > index);
     // return Slice(data->internal_keys[index]);
     return this->data->internal_key_slices[index];
 }
 
 const Slice& VecPhysicalRange::userKeyAt(size_t index) const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
+    return userKeyAtInternal(index);
+}
+
+const Slice& VecPhysicalRange::userKeyAtInternal(size_t index) const {
     assert(valid && range_length > index && data->internal_keys[index].size() > internal_key_extra_bytes);
     // return Slice(data->internal_keys[index].data(), data->internal_keys[index].size() - internal_key_extra_bytes);
     return this->data->user_key_slices[index];
 }
 
 const Slice& VecPhysicalRange::valueAt(size_t index) const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > index);
     // return Slice(data->values[index]);
     return this->data->value_slices[index];
 }
 
 PhysicalRangeUpdateResult VecPhysicalRange::update(const Slice& internal_key, const Slice& value) const {
+    std::unique_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > 0 && internal_key.size() > internal_key_extra_bytes);    
     Slice user_key = Slice(internal_key.data(), internal_key.size() - VecPhysicalRange::internal_key_extra_bytes);
-    int index = find(user_key);
+    int index = findInternal(user_key);
     // index == -1 indicates an tail insertion of middle physical range
 
     // Parse the internal key to get sequence number
@@ -252,7 +217,7 @@ PhysicalRangeUpdateResult VecPhysicalRange::update(const Slice& internal_key, co
     std::string new_internal_key_str = InternalKey(user_key, seq_num, type_in_range_cache).Encode().ToString();
 
     // dont use internal_key for comparison (the last bit may be kTypeValue in Range Cache and kTypeBlobIndex in LSM)
-    if (index >= 0 && userKeyAt(index) == user_key) {
+    if (index >= 0 && userKeyAtInternal(index) == user_key) {
         data->internal_keys[index] = new_internal_key_str;
         // update the value
         data->values[index] = value.ToString();
@@ -261,8 +226,8 @@ PhysicalRangeUpdateResult VecPhysicalRange::update(const Slice& internal_key, co
             delete_length++;
         }
         return PhysicalRangeUpdateResult::UPDATED;
-    } else if (index == -1 || userKeyAt(index) != user_key) {
-        assert(index == -1 || userKeyAt(index) > user_key);
+    } else if (index == -1 || userKeyAtInternal(index) != user_key) {
+        assert(index == -1 || userKeyAtInternal(index) > user_key);
         if (index == -1) {
             index = range_length; // tail insertion
         }
@@ -292,6 +257,11 @@ PhysicalRangeUpdateResult VecPhysicalRange::update(const Slice& internal_key, co
 }
 
 int VecPhysicalRange::find(const Slice& key) const {
+    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
+    return findInternal(key);
+}
+
+int VecPhysicalRange::findInternal(const Slice& key) const {
     assert(valid && range_length > 0 && key.size() > 0);
 
     if (!valid || range_length == 0) {
@@ -303,7 +273,7 @@ int VecPhysicalRange::find(const Slice& key) const {
 
     while (left <= right) {
         int mid = left + (right - left) / 2;
-        Slice mid_user_key = userKeyAt(mid); // use user key for inner comparison
+        Slice mid_user_key = userKeyAtInternal(mid);
         if (mid_user_key == key) {
             return mid;
         } else if (mid_user_key < key) {
@@ -320,6 +290,7 @@ int VecPhysicalRange::find(const Slice& key) const {
 }
 
 void VecPhysicalRange::reserve(size_t len) {
+    std::unique_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid);
     data->internal_keys.reserve(len);
     data->values.reserve(len);

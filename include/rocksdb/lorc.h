@@ -6,6 +6,7 @@
 #include <string>
 #include <memory>
 #include <chrono>
+#include <atomic>
 #include "rocksdb/logical_range.h"
 #include "rocksdb/physical_range.h"
 #include "rocksdb/ref_range.h"
@@ -171,7 +172,15 @@ public:
     }
 
     virtual SequenceNumber getCacheSeqNum() const {
-        return cache_seq_num;
+        // use atomic read
+        auto* atomic_seq = reinterpret_cast<const std::atomic<SequenceNumber>*>(&cache_seq_num);
+        return atomic_seq->load(std::memory_order_relaxed);
+    }
+
+    virtual void setCacheSeqNum(SequenceNumber seq_num) {
+        // use atomic write
+        auto* atomic_seq = reinterpret_cast<std::atomic<SequenceNumber>*>(&cache_seq_num);
+        atomic_seq->store(seq_num, std::memory_order_relaxed);
     }
 
     /**
