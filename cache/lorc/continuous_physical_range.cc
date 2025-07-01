@@ -168,8 +168,8 @@ std::unique_ptr<ContinuousPhysicalRange> ContinuousPhysicalRange::buildFromRefer
     newRange->initializeFromReferringRange(refRange);
     
     for (size_t i = 0; i < refRange.length(); i++) {
-        Slice internal_key = refRange.keyAt(i);
-        std::string internal_key_str = InternalKey(internal_key, refRange.getSeqNum(), kTypeRangeCacheValue).Encode().ToString();
+        Slice user_key = refRange.keyAt(i);
+        std::string internal_key_str = InternalKey(user_key, refRange.getSeqNum(), kTypeRangeCacheValue).Encode().ToString();
         Slice value = refRange.valueAt(i);
         newRange->emplaceInternal(Slice(internal_key_str), value, i);
     }

@@ -2688,8 +2688,21 @@ Status DB::Put(const WriteOptions& opt, ColumnFamilyHandle* column_family,
   if (!s.ok()) {
     return s;
   }
-  return Write(opt, &batch);
-}
+  s = Write(opt, &batch);
+  if (!s.ok()) {
+    return s;
+  }
+  
+  // // synchronized update
+  // auto range_cache = column_family->GetRangeCache();
+  // if (range_cache) {
+  //   ValueType value_type = value.empty() ? kTypeDeletion : kTypeValue;
+  //   std::string internal_key = InternalKey(key, this->GetSnapshot()->GetSequenceNumber(), value_type).Encode().ToString();
+  //   range_cache->updateEntry(Slice(internal_key), value);
+  // }
+
+  return s;
+} 
 
 Status DB::Put(const WriteOptions& opt, ColumnFamilyHandle* column_family,
                const Slice& key, const Slice& ts, const Slice& value) {
@@ -2701,10 +2714,21 @@ Status DB::Put(const WriteOptions& opt, ColumnFamilyHandle* column_family,
                    opt.protection_bytes_per_key,
                    default_cf_ucmp->timestamp_size());
   Status s = batch.Put(column_family, key, ts, value);
+  s = Write(opt, &batch);
   if (!s.ok()) {
     return s;
   }
-  return Write(opt, &batch);
+
+  // // synchronized update
+  // auto range_cache = column_family->GetRangeCache();
+  // if (range_cache) {
+  //   ValueType value_type = value.empty() ? kTypeDeletion : kTypeValue;
+  //   Slice internal_key = InternalKey(key, this->GetSnapshot()->GetSequenceNumber(), value_type).Encode();
+  //   range_cache->updateEntry(internal_key, value);
+  // }
+
+
+  return s;
 }
 
 Status DB::PutEntity(const WriteOptions& options,

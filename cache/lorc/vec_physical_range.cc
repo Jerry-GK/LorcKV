@@ -127,8 +127,8 @@ std::unique_ptr<VecPhysicalRange> VecPhysicalRange::buildFromReferringRange(cons
     newRange->reserve(refRange.length());
 
     for (size_t i = 0; i < refRange.length(); i++) {
-        Slice internal_key = refRange.keyAt(i);
-        std::string internal_key_str = InternalKey(internal_key, refRange.getSeqNum(), kTypeRangeCacheValue).Encode().ToString();
+        Slice user_key = refRange.keyAt(i);
+        std::string internal_key_str = InternalKey(user_key, refRange.getSeqNum(), kTypeRangeCacheValue).Encode().ToString();
         Slice value = refRange.valueAt(i);
         newRange->emplaceInternal(Slice(internal_key_str), value);
     }
