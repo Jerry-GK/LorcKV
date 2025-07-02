@@ -182,38 +182,33 @@ std::unique_ptr<ContinuousPhysicalRange> ContinuousPhysicalRange::buildFromRefer
 }
 
 // Override virtual functions
+// key methods in continuous physical range does NOT need be read locked since key vector is immutable after initialization (no random insertion)
 const Slice& ContinuousPhysicalRange::startUserKey() const {
-    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > 0 && data->key_sizes.size() > 0 && data->key_sizes[0] > internal_key_extra_bytes);
     return this->data->user_key_slices[0];
 }
 
 const Slice& ContinuousPhysicalRange::endUserKey() const {
-    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > 0 && data->key_sizes.size() > 0 && data->key_sizes[range_length - 1] > internal_key_extra_bytes);
     return this->data->user_key_slices[range_length - 1];
 }
 
 const Slice& ContinuousPhysicalRange::startInternalKey() const {
-    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > 0 && data->key_sizes.size() > 0);
     return this->data->internal_key_slices[0];
 }
 
 const Slice& ContinuousPhysicalRange::endInternalKey() const {
-    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > 0 && data->key_sizes.size() > 0);
     return this->data->internal_key_slices[range_length - 1];
 }
 
 const Slice& ContinuousPhysicalRange::internalKeyAt(size_t index) const {
-    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     assert(valid && range_length > index);
     return this->data->internal_key_slices[index];
 }
 
 const Slice& ContinuousPhysicalRange::userKeyAt(size_t index) const {
-    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
     return userKeyAtInternal(index);
 }
 

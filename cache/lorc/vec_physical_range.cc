@@ -24,6 +24,7 @@ VecPhysicalRange::VecPhysicalRange(bool valid_) {
     this->range_length = 0;
     this->byte_size = 0;
     this->timestamp = 0;
+    this->start_user_key_slice = Slice();
     if (valid) {
         data = std::make_shared<RangeData>();
     }
@@ -40,6 +41,7 @@ VecPhysicalRange::VecPhysicalRange(const VecPhysicalRange& other) : PhysicalRang
     this->range_length = other.range_length;
     this->byte_size = other.byte_size;
     this->timestamp = other.timestamp;
+    this->start_user_key_slice = other.start_user_key_slice;
 
     if (other.valid && other.data) {
         this->data = std::make_shared<RangeData>();
@@ -59,10 +61,12 @@ VecPhysicalRange::VecPhysicalRange(VecPhysicalRange&& other) noexcept : Physical
     this->range_length = other.range_length;
     this->byte_size = other.byte_size;
     this->timestamp = other.timestamp;
+    this->start_user_key_slice = other.start_user_key_slice;
 
     other.valid = false;
     other.range_length = 0;
     other.timestamp = 0;
+    other.start_user_key_slice = Slice();
 }
 
 VecPhysicalRange::VecPhysicalRange(std::shared_ptr<RangeData> data_, size_t range_length_) {
@@ -76,6 +80,12 @@ VecPhysicalRange::VecPhysicalRange(std::shared_ptr<RangeData> data_, size_t rang
         this->byte_size += data_->values[i].size();
     }
     this->timestamp = 0;
+
+    if (range_length_ > 0) {
+        this->start_user_key_slice = Slice(data_->internal_keys[0].data(), data_->internal_keys[0].size() - internal_key_extra_bytes);
+    } else {
+        this->start_user_key_slice = Slice();
+    }
 }
 
 VecPhysicalRange& VecPhysicalRange::operator=(const VecPhysicalRange& other) {
@@ -86,6 +96,7 @@ VecPhysicalRange& VecPhysicalRange::operator=(const VecPhysicalRange& other) {
         this->range_length = other.range_length;
         this->byte_size = other.byte_size;
         this->timestamp = other.timestamp;
+        this->start_user_key_slice = other.start_user_key_slice;
 
         if (other.valid && other.data) {
             this->data = std::make_shared<RangeData>();
@@ -114,11 +125,13 @@ VecPhysicalRange& VecPhysicalRange::operator=(VecPhysicalRange&& other) noexcept
         this->range_length = other.range_length;
         this->byte_size = other.byte_size;
         this->timestamp = other.timestamp;
+        this->start_user_key_slice = other.start_user_key_slice;
 
         // Reset other object's state
         other.valid = false;
         other.range_length = 0;
         other.timestamp = 0;
+        other.start_user_key_slice = Slice();
     }
     return *this;
 }
@@ -134,13 +147,18 @@ std::unique_ptr<VecPhysicalRange> VecPhysicalRange::buildFromReferringRange(cons
         newRange->emplaceInternal(Slice(internal_key_str), value);
     }
 
+    if (newRange->range_length > 0) {
+        newRange->start_user_key_slice = newRange->data->user_key_slices[0];
+    }
+
     return newRange;
 }
 
 const Slice& VecPhysicalRange::startUserKey() const {
-    std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
-    assert(valid && range_length > 0 && data->internal_keys.size() > 0 && data->internal_keys[0].size() > internal_key_extra_bytes);
-    return this->data->user_key_slices[0];
+    // Optimization: dont add read lock for startUserKey since it never changes after initialization
+    // std::shared_lock<std::shared_mutex> lock(physical_range_mutex_);
+    // assert(valid && range_length > 0 && data->internal_keys.size() > 0 && data->internal_keys[0].size() > internal_key_extra_bytes);
+    return this->start_user_key_slice;
 }
 
 const Slice& VecPhysicalRange::endUserKey() const {
@@ -308,6 +326,10 @@ void VecPhysicalRange::emplaceInternal(const Slice& internal_key, const Slice& v
     data->internal_key_slices.emplace_back(data->internal_keys.back().data(), data->internal_keys.back().size());
     data->user_key_slices.emplace_back(data->internal_keys.back().data(), data->internal_keys.back().size() - internal_key_extra_bytes);
     data->value_slices.emplace_back(data->values.back().data(), data->values.back().size());
+
+    if (range_length == 1) {
+        start_user_key_slice = data->user_key_slices[0];
+    }
 }
 
 }  // namespace ROCKSDB_NAMESPACE

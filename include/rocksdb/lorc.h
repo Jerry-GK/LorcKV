@@ -233,6 +233,14 @@ public:
 
     virtual void printAllLogicalRanges() const = 0;
 
+    virtual void lockRead() const = 0;
+
+    virtual void lockWrite() = 0;
+
+    virtual void unlockRead() const = 0;
+
+    virtual void unlockWrite() = 0;
+
     /**
      * TODO(jr): Explain this method whose logic is very complicated
      */

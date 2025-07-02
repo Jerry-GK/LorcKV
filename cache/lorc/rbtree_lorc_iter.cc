@@ -17,7 +17,6 @@ bool RBTreeLogicallyOrderedRangeCacheIterator::Valid() const {
 }
 
 bool RBTreeLogicallyOrderedRangeCacheIterator::HasNextInRange() const {
-    std::shared_lock<std::shared_mutex> lock(cache->logical_ranges_mutex_);
     if (!valid) {
         return false;
     }
@@ -25,7 +24,6 @@ bool RBTreeLogicallyOrderedRangeCacheIterator::HasNextInRange() const {
 }
 
 void RBTreeLogicallyOrderedRangeCacheIterator::SeekToFirst() {
-    std::shared_lock<std::shared_mutex> lock(cache->logical_ranges_mutex_);
     if (!cache) {
         valid = false;
         return;
@@ -40,7 +38,6 @@ void RBTreeLogicallyOrderedRangeCacheIterator::SeekToFirst() {
 }
 
 void RBTreeLogicallyOrderedRangeCacheIterator::SeekToLast() {
-    std::shared_lock<std::shared_mutex> lock(cache->logical_ranges_mutex_);
     if (!cache) {
         valid = false;
         return;
@@ -55,7 +52,6 @@ void RBTreeLogicallyOrderedRangeCacheIterator::SeekToLast() {
 }
 
 void RBTreeLogicallyOrderedRangeCacheIterator::Seek(const Slice& target_internal_key) {
-    std::shared_lock<std::shared_mutex> lock(cache->logical_ranges_mutex_);
     if (!cache) {
         valid = false;
         return;
@@ -84,7 +80,6 @@ void RBTreeLogicallyOrderedRangeCacheIterator::Seek(const Slice& target_internal
 }
 
 void RBTreeLogicallyOrderedRangeCacheIterator::SeekForPrev(const Slice& target_internal_key) {
-    std::shared_lock<std::shared_mutex> lock(cache->logical_ranges_mutex_);
     if (!cache) {
         valid = false;
         return;
@@ -108,7 +103,6 @@ void RBTreeLogicallyOrderedRangeCacheIterator::SeekForPrev(const Slice& target_i
 }
 
 void RBTreeLogicallyOrderedRangeCacheIterator::Next() {
-    std::shared_lock<std::shared_mutex> lock(cache->logical_ranges_mutex_);
     if (!valid) {
         return;
     }
@@ -126,7 +120,6 @@ void RBTreeLogicallyOrderedRangeCacheIterator::Next() {
 }
 
 void RBTreeLogicallyOrderedRangeCacheIterator::Prev() {
-    std::shared_lock<std::shared_mutex> lock(cache->logical_ranges_mutex_);
     if (!valid) {
         return;
     }
@@ -144,7 +137,6 @@ void RBTreeLogicallyOrderedRangeCacheIterator::Prev() {
 }
 
 Slice RBTreeLogicallyOrderedRangeCacheIterator::key() const {
-    std::shared_lock<std::shared_mutex> lock(cache->logical_ranges_mutex_);
     static std::string empty_string;
     if (!valid) {
         return empty_string;
@@ -153,7 +145,6 @@ Slice RBTreeLogicallyOrderedRangeCacheIterator::key() const {
 }
 
 Slice RBTreeLogicallyOrderedRangeCacheIterator::userKey() const {
-    std::shared_lock<std::shared_mutex> lock(cache->logical_ranges_mutex_);
     static std::string empty_string;
     if (!valid) {
         return empty_string;
@@ -162,7 +153,6 @@ Slice RBTreeLogicallyOrderedRangeCacheIterator::userKey() const {
 }
 
 Slice RBTreeLogicallyOrderedRangeCacheIterator::value() const {
-    std::shared_lock<std::shared_mutex> lock(cache->logical_ranges_mutex_);
     static std::string empty_string;
     if (!valid) {
         return empty_string;

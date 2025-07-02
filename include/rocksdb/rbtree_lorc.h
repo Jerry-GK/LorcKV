@@ -72,6 +72,14 @@ public:
 
     void printAllLogicalRanges() const override;
 
+    void lockRead() const override;
+
+    void lockWrite() override;
+
+    void unlockRead() const override;
+
+    void unlockWrite() override;
+
     std::vector<LogicalRange> divideLogicalRange(const Slice& start_key, size_t len, const Slice& end_key) const override;
 
 private:

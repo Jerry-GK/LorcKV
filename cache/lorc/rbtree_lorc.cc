@@ -15,14 +15,15 @@ RBTreeLogicallyOrderedRangeCache::RBTreeLogicallyOrderedRangeCache(size_t capaci
 }
 
 RBTreeLogicallyOrderedRangeCache::~RBTreeLogicallyOrderedRangeCache() {
-    std::unique_lock<std::shared_mutex> lock(logical_ranges_mutex_);
+    lockWrite();
     ordered_physical_ranges.clear();
     physical_range_length_map.clear();
     ranges_view.clear();
+    unlockWrite();
 }
 
 void RBTreeLogicallyOrderedRangeCache::putGapPhysicalRange(ReferringRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) {
-    std::unique_lock<std::shared_mutex> lock(logical_ranges_mutex_);
+    lockWrite();
     std::chrono::high_resolution_clock::time_point start_time;
 
     std::unique_ptr<PhysicalRange> newRange;
@@ -32,6 +33,7 @@ void RBTreeLogicallyOrderedRangeCache::putGapPhysicalRange(ReferringRange&& newR
         newRange = VecPhysicalRange::buildFromReferringRange(newRefRange);
     } else {
         logger.error("Unsupported PhysicalRangeType for RBTreeLogicallyOrderedRangeCache");
+        unlockWrite();
         return;
     }
 
@@ -78,11 +80,12 @@ void RBTreeLogicallyOrderedRangeCache::putGapPhysicalRange(ReferringRange&& newR
         this->cache_statistic.increasePutRangeNum();
         this->cache_statistic.increasePutRangeTotalTime(duration.count());
     }
+    unlockWrite();
 }
 
 bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, const Slice& value) {
     // updateEntry takes read lock for logical ranges
-    std::shared_lock<std::shared_mutex> lock(logical_ranges_mutex_);
+    lockRead();
     Slice user_key = Slice(internal_key.data(), internal_key.size() - PhysicalRange::internal_key_extra_bytes);
 
     // Find the logical range that may contain the user key
@@ -97,6 +100,7 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
     auto range_it = find_first_range(user_key);
     if (range_it == logical_ranges.end() || range_it->startUserKey() > user_key) {
         // The user key is not in any logical range, no need to update!
+        unlockRead();
         return false;
     }
     Slice logical_range_start_key = range_it->startUserKey();
@@ -104,6 +108,7 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
     if (!(logical_range_start_key <= user_key && user_key <= logical_range_end_key)) {
         logger.error("User key " + user_key.ToString() + " is not in the logical range: " + range_it->toString());
         assert(false);
+        unlockRead();
         return false;
     }
 
@@ -115,12 +120,14 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
     if (it == ordered_physical_ranges.end() || (*it)->startUserKey() > user_key) { // (*it)->endUserKey() < user_key is possible in physical range
         logger.error("User key " + user_key.ToString() + " found in logical range but not found in any physical range");
         assert(false);
+        unlockRead();
         return false;
     }
     assert((*it)->startUserKey() <= user_key);
     if ((*it)->endUserKey() < user_key && (*it)->endUserKey() == logical_range_end_key) {
         // The user key is not in the PhysicalRange, do not update
         logger.error("User key " + user_key.ToString() + " is not in the last physical range in logical range: " + (*it)->toString());
+        unlockRead();
         return false;
     }
     // `(*it)->endUserKey() < user_key && (*it)->endUserKey() != logical_range_end_key` is possible (tail insertion in a middle physical range)
@@ -137,12 +144,15 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
         if (LogicallyOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::CONTINUOUS) {
             logger.error("Random insertion in continuous physical range is not supported yet");
         }
+        unlockRead();
         return false;
     } else if (updateResult == PhysicalRangeUpdateResult::ERROR) {
         logger.error("Error updating entry (user key = " + parsed_internal_key.user_key.ToString() + ") in PhysicalRange: " + (*it)->toString());
+        unlockRead();
         return false;
     } else if (updateResult == PhysicalRangeUpdateResult::OUT_OF_RANGE) {
         logger.error("Key " + parsed_internal_key.user_key.ToString() + " is out of range in PhysicalRange: " + (*it)->toString());
+        unlockRead();
         return false;
     } else if (updateResult == PhysicalRangeUpdateResult::UPDATED) {
         // normally updated
@@ -163,11 +173,12 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
     assert(updateResult == PhysicalRangeUpdateResult::UPDATED || updateResult == PhysicalRangeUpdateResult::INSERTED);
     // Update the cache sequence number after updating an entry
     this->setCacheSeqNum(std::max(this->getCacheSeqNum(), key_seq_num));
+    unlockRead();
     return true;
 }
 
 bool RBTreeLogicallyOrderedRangeCache::Get(const Slice& internal_key, std::string* value, Status* s) const {
-    std::shared_lock<std::shared_mutex> lock(logical_ranges_mutex_); // Acquire shared lock for reading
+    lockRead();
     assert(s);
     
     // Extract user key from internal key
@@ -176,6 +187,7 @@ bool RBTreeLogicallyOrderedRangeCache::Get(const Slice& internal_key, std::strin
     if (!status.ok()) {
         *s = status;
         assert(false);
+        unlockRead();
         return false;
     }
     Slice user_key = parsed_internal_key.user_key;
@@ -186,6 +198,7 @@ bool RBTreeLogicallyOrderedRangeCache::Get(const Slice& internal_key, std::strin
         // The key is older than the cache sequence number, not found
         logger.warn("Get: Key " + user_key.ToString() + " with sequence number " + std::to_string(key_seq_num) + " is older than cache sequence number " + std::to_string(this->getCacheSeqNum()));
         *s = Status::OK();
+        unlockRead();
         return false;
     }
 
@@ -194,6 +207,7 @@ bool RBTreeLogicallyOrderedRangeCache::Get(const Slice& internal_key, std::strin
         logger.error("Get: Key " + user_key.ToString() + " is not a valid seek key (type = " + std::to_string(static_cast<unsigned char>(key_type)) + ")");
         *s = Status::NotFound("Key is not a valid seek key");
         assert(false);
+        unlockRead();
         return false;
     }
     
@@ -207,6 +221,7 @@ bool RBTreeLogicallyOrderedRangeCache::Get(const Slice& internal_key, std::strin
     if (it == ordered_physical_ranges.end() || (*it)->startUserKey() > user_key || (*it)->endUserKey() < user_key) {
         // Key not found in any physical range
         *s = Status::OK();
+        unlockRead();
         return false;
     }
     
@@ -216,12 +231,14 @@ bool RBTreeLogicallyOrderedRangeCache::Get(const Slice& internal_key, std::strin
         assert(false);
         logger.error("Get: Key " + user_key.ToString() + " not found in PhysicalRange: " + (*it)->toString());
         *s = Status::NotFound("Key not found in PhysicalRange");
+        unlockRead();
         return false;
     }
     
     // Check if the found key exactly matches our target key
     if ((*it)->userKeyAt(index) != user_key) {
         *s = Status::OK();
+        unlockRead();
         return false;
     }
     
@@ -230,19 +247,25 @@ bool RBTreeLogicallyOrderedRangeCache::Get(const Slice& internal_key, std::strin
         *value = (*it)->valueAt(index).ToString();
     }
     *s = Status::OK();
+    unlockRead();
     return true;
 }
 
 void RBTreeLogicallyOrderedRangeCache::tryVictim() {    
-    std::unique_lock<std::shared_mutex> lock(logical_ranges_mutex_);
+    lockRead();
     // If no ranges exist, nothing to evict
-    if (physical_range_length_map.empty() || ordered_physical_ranges.empty()) {
+    if (physical_range_length_map.empty() || ordered_physical_ranges.empty() || this->current_size <= this->capacity) {
+        unlockRead();
         return;
     }
 
+    // upgrade to unique lock for real victim
+    unlockRead();
+    lockWrite();
     while (this->current_size > this->capacity) {
         this->victim();
     }
+    unlockWrite();
 }
 
 void RBTreeLogicallyOrderedRangeCache::victim() {    
@@ -303,7 +326,6 @@ void RBTreeLogicallyOrderedRangeCache::victim() {
 }
 
 void RBTreeLogicallyOrderedRangeCache::pinRange(std::string startKey) {
-    std::shared_lock<std::shared_mutex> lock(logical_ranges_mutex_);
     auto it = ordered_physical_ranges.find(startKey);
     if (it != ordered_physical_ranges.end() && (*it)->startUserKey() == startKey) {
         // update the timestamp
@@ -312,7 +334,6 @@ void RBTreeLogicallyOrderedRangeCache::pinRange(std::string startKey) {
 }
 
 LogicallyOrderedRangeCacheIterator* RBTreeLogicallyOrderedRangeCache::newLogicallyOrderedRangeCacheIterator(Arena* arena) const {
-    std::shared_lock<std::shared_mutex> lock(logical_ranges_mutex_); 
     if (arena == nullptr) {
         return new RBTreeLogicallyOrderedRangeCacheIterator(this);
     }
@@ -349,8 +370,9 @@ void RBTreeLogicallyOrderedRangeCache::printAllLogicalRanges() const {
 }
 
 void RBTreeLogicallyOrderedRangeCache::printAllRangesWithKeys() const {
-    std::shared_lock<std::shared_mutex> lock(logical_ranges_mutex_); // Acquire shared lock for reading
+    lockRead();
     if (!logger.outputInLevel(LorcLogger::Level::DEBUG)) {
+        unlockRead();
         return;
     }
 
@@ -370,11 +392,26 @@ void RBTreeLogicallyOrderedRangeCache::printAllRangesWithKeys() const {
         }
     }
     logger.debug("----------------------------------------");
+    unlockRead();
+}
+
+void RBTreeLogicallyOrderedRangeCache::lockRead() const {
+    logical_ranges_mutex_.lock_shared();
+}
+
+void RBTreeLogicallyOrderedRangeCache::lockWrite() {
+    logical_ranges_mutex_.lock();
+}
+
+void RBTreeLogicallyOrderedRangeCache::unlockRead() const {
+    logical_ranges_mutex_.unlock_shared();
+}
+
+void RBTreeLogicallyOrderedRangeCache::unlockWrite() {
+    logical_ranges_mutex_.unlock();
 }
 
 std::vector<LogicalRange> RBTreeLogicallyOrderedRangeCache::divideLogicalRange(const Slice& start_key, size_t len, const Slice& end_key) const {
-    std::shared_lock<std::shared_mutex> lock(logical_ranges_mutex_);
-    
     std::vector<LogicalRange> result;
     size_t total_length_in_range_cache = 0;
     

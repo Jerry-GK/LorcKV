@@ -23,6 +23,7 @@ private:
         std::vector<Slice> user_key_slices;
         std::vector<Slice> value_slices;
     };
+    Slice start_user_key_slice;
     std::shared_ptr<RangeData> data;
     mutable std::shared_mutex physical_range_mutex_;
 

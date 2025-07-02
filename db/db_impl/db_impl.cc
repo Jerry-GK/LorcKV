@@ -2332,11 +2332,14 @@ Status DBImpl::ScanWithPredivision(const ReadOptions& _read_options,
   }
 
   // TODO(jr): control the visibility of range cache better (MVCC?)
+  // Current solution: big lock for scan
+  lorc->lockRead();
   SequenceNumber cache_seq_num  = lorc->getCacheSeqNum();
   bool is_range_cache_visible = (read_seq_num >= cache_seq_num);
   if (!is_range_cache_visible) {
     // ignore range cache is not visible
     lorc->getLogger().warn("ScanWithPredivision: range cache is not visible, read_seq_num = " + std::to_string(read_seq_num) + ", cache_seq_num = " + std::to_string(cache_seq_num));
+    lorc->unlockRead();
     return ScanWithAllTierIterator(_read_options, column_family, start_key, end_key, len, keys, values);
   }
   
@@ -2420,15 +2423,22 @@ Status DBImpl::ScanWithPredivision(const ReadOptions& _read_options,
       // try to put non-hit range to range cache
       if (ref_range.isValid() && ref_range.length() > 0) {
         // not included in non-hit ranges indicates that the range should be concatenated with ranges in range cache on the corresponding side
+        // TODO(jr): temp upgrade lock in a better way
+        lorc->unlockRead();
         lorc->putGapPhysicalRange(std::move(ref_range), !range.isLeftIncluded(), concatRightRangeInCache, false, "", "");
+        lorc->lockRead();
       } else if (ref_range.isValid() && ref_range.length() == 0 && !range.isLeftIncluded() && concatRightRangeInCache) {
         // put the empty gap to concat adjacent ranges in range cache
+        lorc->unlockRead();
         lorc->putGapPhysicalRange(std::move(ref_range), true, true, true, range_start_key.ToString(), range_end_key.ToString());
+        lorc->lockRead();
       }
     }
 
     _read_options.read_tier = origin_read_tier; // restore read tier
   }
+
+  lorc->unlockRead();
 
   if (lorc) {
     lorc->tryVictim();
