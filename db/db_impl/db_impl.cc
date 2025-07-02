@@ -2334,7 +2334,7 @@ Status DBImpl::ScanWithPredivision(const ReadOptions& _read_options,
   // TODO(jr): control the visibility of range cache better (MVCC?)
   // Current solution: big lock for scan
   lorc->lockRead();
-  SequenceNumber cache_seq_num  = lorc->getCacheSeqNum();
+  SequenceNumber cache_seq_num  = lorc->getRangeCacheSeqNum();
   bool is_range_cache_visible = (read_seq_num >= cache_seq_num);
   if (!is_range_cache_visible) {
     // ignore range cache is not visible

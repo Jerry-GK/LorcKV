@@ -59,8 +59,8 @@ void RBTreeLogicallyOrderedRangeCache::putGapPhysicalRange(ReferringRange&& newR
         // no need to change actual physical ranges info
     }
 
-    // Update the cache sequence number after putting a new range
-    this->setCacheSeqNum(std::max(this->getCacheSeqNum(), newRefRange.getSeqNum()));
+        // Update the cache sequence number after putting a new range
+    this->setRangeCacheSeqNum(std::max(this->getRangeCacheSeqNum(), newRefRange.getSeqNum()));
 
     // do NOT do victim here (call victim externally after filling all gap ranges)
     // while (this->current_size > this->capacity) {
@@ -85,7 +85,7 @@ void RBTreeLogicallyOrderedRangeCache::putGapPhysicalRange(ReferringRange&& newR
 
 bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, const Slice& value) {
     // updateEntry takes read lock for logical ranges
-    lockRead();
+    lockWrite();
     Slice user_key = Slice(internal_key.data(), internal_key.size() - PhysicalRange::internal_key_extra_bytes);
 
     // Find the logical range that may contain the user key
@@ -100,7 +100,7 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
     auto range_it = find_first_range(user_key);
     if (range_it == logical_ranges.end() || range_it->startUserKey() > user_key) {
         // The user key is not in any logical range, no need to update!
-        unlockRead();
+        unlockWrite();
         return false;
     }
     Slice logical_range_start_key = range_it->startUserKey();
@@ -108,7 +108,7 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
     if (!(logical_range_start_key <= user_key && user_key <= logical_range_end_key)) {
         logger.error("User key " + user_key.ToString() + " is not in the logical range: " + range_it->toString());
         assert(false);
-        unlockRead();
+        unlockWrite();
         return false;
     }
 
@@ -120,14 +120,14 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
     if (it == ordered_physical_ranges.end() || (*it)->startUserKey() > user_key) { // (*it)->endUserKey() < user_key is possible in physical range
         logger.error("User key " + user_key.ToString() + " found in logical range but not found in any physical range");
         assert(false);
-        unlockRead();
+        unlockWrite();
         return false;
     }
     assert((*it)->startUserKey() <= user_key);
     if ((*it)->endUserKey() < user_key && (*it)->endUserKey() == logical_range_end_key) {
         // The user key is not in the PhysicalRange, do not update
         logger.error("User key " + user_key.ToString() + " is not in the last physical range in logical range: " + (*it)->toString());
-        unlockRead();
+        unlockWrite();
         return false;
     }
     // `(*it)->endUserKey() < user_key && (*it)->endUserKey() != logical_range_end_key` is possible (tail insertion in a middle physical range)
@@ -144,15 +144,15 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
         if (LogicallyOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::CONTINUOUS) {
             logger.error("Random insertion in continuous physical range is not supported yet");
         }
-        unlockRead();
+        unlockWrite();
         return false;
     } else if (updateResult == PhysicalRangeUpdateResult::ERROR) {
         logger.error("Error updating entry (user key = " + parsed_internal_key.user_key.ToString() + ") in PhysicalRange: " + (*it)->toString());
-        unlockRead();
+        unlockWrite();
         return false;
     } else if (updateResult == PhysicalRangeUpdateResult::OUT_OF_RANGE) {
         logger.error("Key " + parsed_internal_key.user_key.ToString() + " is out of range in PhysicalRange: " + (*it)->toString());
-        unlockRead();
+        unlockWrite();
         return false;
     } else if (updateResult == PhysicalRangeUpdateResult::UPDATED) {
         // normally updated
@@ -172,8 +172,8 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
 
     assert(updateResult == PhysicalRangeUpdateResult::UPDATED || updateResult == PhysicalRangeUpdateResult::INSERTED);
     // Update the cache sequence number after updating an entry
-    this->setCacheSeqNum(std::max(this->getCacheSeqNum(), key_seq_num));
-    unlockRead();
+    this->setRangeCacheSeqNum(std::max(this->getRangeCacheSeqNum(), key_seq_num));
+    unlockWrite();
     return true;
 }
 
@@ -194,9 +194,9 @@ bool RBTreeLogicallyOrderedRangeCache::Get(const Slice& internal_key, std::strin
     SequenceNumber key_seq_num = parsed_internal_key.sequence;
     ValueType key_type = parsed_internal_key.type;
 
-    if (key_seq_num < this->getCacheSeqNum()) {
+    if (key_seq_num < this->getRangeCacheSeqNum()) {
         // The key is older than the cache sequence number, not found
-        logger.warn("Get: Key " + user_key.ToString() + " with sequence number " + std::to_string(key_seq_num) + " is older than cache sequence number " + std::to_string(this->getCacheSeqNum()));
+        logger.warn("Get: Key " + user_key.ToString() + " with sequence number " + std::to_string(key_seq_num) + " is older than cache sequence number " + std::to_string(this->getRangeCacheSeqNum()));
         *s = Status::OK();
         unlockRead();
         return false;

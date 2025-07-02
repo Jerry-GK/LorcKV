@@ -140,6 +140,7 @@ public:
     /**
      * Update an entry in existing ranges
      * Return false if the key is not found
+     * TODO(jr): update entries in batch
      */
     virtual bool updateEntry(const Slice& internal_key, const Slice& value) = 0;
 
@@ -171,15 +172,15 @@ public:
         return total_range_length;
     }
 
-    virtual SequenceNumber getCacheSeqNum() const {
+    virtual SequenceNumber getRangeCacheSeqNum() const {
         // use atomic read
-        auto* atomic_seq = reinterpret_cast<const std::atomic<SequenceNumber>*>(&cache_seq_num);
+        auto* atomic_seq = reinterpret_cast<const std::atomic<SequenceNumber>*>(&range_cache_seq_num);
         return atomic_seq->load(std::memory_order_relaxed);
     }
 
-    virtual void setCacheSeqNum(SequenceNumber seq_num) {
+    virtual void setRangeCacheSeqNum(SequenceNumber seq_num) {
         // use atomic write
-        auto* atomic_seq = reinterpret_cast<std::atomic<SequenceNumber>*>(&cache_seq_num);
+        auto* atomic_seq = reinterpret_cast<std::atomic<SequenceNumber>*>(&range_cache_seq_num);
         atomic_seq->store(seq_num, std::memory_order_relaxed);
     }
 
@@ -261,7 +262,7 @@ protected:
     LogicalRangesView ranges_view;
     size_t current_size;
     size_t total_range_length;
-    SequenceNumber cache_seq_num; // the sequence number of the range cache
+    SequenceNumber range_cache_seq_num; // the sequence number of the range cache (consistent with the largest sequence number of the system)
 
     bool enable_statistic; // initialize to false
     CacheStatistic cache_statistic;
