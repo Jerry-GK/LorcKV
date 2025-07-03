@@ -1118,7 +1118,7 @@ struct AdvancedColumnFamilyOptions {
   // It's a logical cache, not a physical one. Access needs an iterator between (imm)memtables and L0+ files.
   //
   // Default: nullptr (disabled)
-  std::shared_ptr<LogicallyOrderedRangeCache> range_cache = nullptr;
+  std::shared_ptr<LogicalOrderedRangeCache> range_cache = nullptr;
 
   // ---------------- OPTIONS NOT SUPPORTED ANYMORE ----------------
 };

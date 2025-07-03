@@ -5,25 +5,25 @@
 
 namespace ROCKSDB_NAMESPACE {
 
-RBTreeLogicallyOrderedRangeCacheIterator::~RBTreeLogicallyOrderedRangeCacheIterator() {
+RBTreeLogicalOrderedRangeCacheIterator::~RBTreeLogicalOrderedRangeCacheIterator() {
     
 }
 
-RBTreeLogicallyOrderedRangeCacheIterator::RBTreeLogicallyOrderedRangeCacheIterator(const RBTreeLogicallyOrderedRangeCache* cache_)
+RBTreeLogicalOrderedRangeCacheIterator::RBTreeLogicalOrderedRangeCacheIterator(const RBTreeLogicalOrderedRangeCache* cache_)
     : cache(cache_), current_index(-1), iter_status(Status()), valid(false) {}
 
-bool RBTreeLogicallyOrderedRangeCacheIterator::Valid() const {
+bool RBTreeLogicalOrderedRangeCacheIterator::Valid() const {
     return valid && iter_status.ok();
 }
 
-bool RBTreeLogicallyOrderedRangeCacheIterator::HasNextInRange() const {
+bool RBTreeLogicalOrderedRangeCacheIterator::HasNextInRange() const {
     if (!valid) {
         return false;
     }
     return (size_t)current_index + 1 < (*current_range)->length();
 }
 
-void RBTreeLogicallyOrderedRangeCacheIterator::SeekToFirst() {
+void RBTreeLogicalOrderedRangeCacheIterator::SeekToFirst() {
     if (!cache) {
         valid = false;
         return;
@@ -37,7 +37,7 @@ void RBTreeLogicallyOrderedRangeCacheIterator::SeekToFirst() {
     }
 }
 
-void RBTreeLogicallyOrderedRangeCacheIterator::SeekToLast() {
+void RBTreeLogicalOrderedRangeCacheIterator::SeekToLast() {
     if (!cache) {
         valid = false;
         return;
@@ -51,7 +51,7 @@ void RBTreeLogicallyOrderedRangeCacheIterator::SeekToLast() {
     valid = true;
 }
 
-void RBTreeLogicallyOrderedRangeCacheIterator::Seek(const Slice& target_internal_key) {
+void RBTreeLogicalOrderedRangeCacheIterator::Seek(const Slice& target_internal_key) {
     if (!cache) {
         valid = false;
         return;
@@ -79,7 +79,7 @@ void RBTreeLogicallyOrderedRangeCacheIterator::Seek(const Slice& target_internal
     }
 }
 
-void RBTreeLogicallyOrderedRangeCacheIterator::SeekForPrev(const Slice& target_internal_key) {
+void RBTreeLogicalOrderedRangeCacheIterator::SeekForPrev(const Slice& target_internal_key) {
     if (!cache) {
         valid = false;
         return;
@@ -102,7 +102,7 @@ void RBTreeLogicallyOrderedRangeCacheIterator::SeekForPrev(const Slice& target_i
     }
 }
 
-void RBTreeLogicallyOrderedRangeCacheIterator::Next() {
+void RBTreeLogicalOrderedRangeCacheIterator::Next() {
     if (!valid) {
         return;
     }
@@ -119,7 +119,7 @@ void RBTreeLogicallyOrderedRangeCacheIterator::Next() {
     }
 }
 
-void RBTreeLogicallyOrderedRangeCacheIterator::Prev() {
+void RBTreeLogicalOrderedRangeCacheIterator::Prev() {
     if (!valid) {
         return;
     }
@@ -136,7 +136,7 @@ void RBTreeLogicallyOrderedRangeCacheIterator::Prev() {
     }
 }
 
-Slice RBTreeLogicallyOrderedRangeCacheIterator::key() const {
+Slice RBTreeLogicalOrderedRangeCacheIterator::key() const {
     static std::string empty_string;
     if (!valid) {
         return empty_string;
@@ -144,7 +144,7 @@ Slice RBTreeLogicallyOrderedRangeCacheIterator::key() const {
     return (*current_range)->internalKeyAt(current_index);
 }
 
-Slice RBTreeLogicallyOrderedRangeCacheIterator::userKey() const {
+Slice RBTreeLogicalOrderedRangeCacheIterator::userKey() const {
     static std::string empty_string;
     if (!valid) {
         return empty_string;
@@ -152,7 +152,7 @@ Slice RBTreeLogicallyOrderedRangeCacheIterator::userKey() const {
     return (*current_range)->userKeyAt(current_index);
 }
 
-Slice RBTreeLogicallyOrderedRangeCacheIterator::value() const {
+Slice RBTreeLogicalOrderedRangeCacheIterator::value() const {
     static std::string empty_string;
     if (!valid) {
         return empty_string;
@@ -160,7 +160,7 @@ Slice RBTreeLogicallyOrderedRangeCacheIterator::value() const {
     return (*current_range)->valueAt(current_index);
 }
 
-Status RBTreeLogicallyOrderedRangeCacheIterator::status() const {
+Status RBTreeLogicalOrderedRangeCacheIterator::status() const {
     return this->iter_status;
 }
 

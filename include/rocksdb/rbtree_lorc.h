@@ -12,7 +12,7 @@
 namespace ROCKSDB_NAMESPACE {
 
 class RBTreeRangeCacheIterator;
-class LogicallyOrderedRangeCacheIterator;
+class LogicalOrderedRangeCacheIterator;
 class Arena;
 
 // enum
@@ -44,13 +44,13 @@ struct PhysicalRangeComparator {
 };
 
 /**
- * RBTreeLogicallyOrderedRangeCache: A cache implementation using Red-Black Tree to store PhysicalRange data
+ * RBTreeLogicalOrderedRangeCache: A cache implementation using Red-Black Tree to store PhysicalRange data
  * Uses ordered containers to maintain ranges sorted by their start keys and lengths
  */
-class RBTreeLogicallyOrderedRangeCache : public LogicallyOrderedRangeCache {
+class RBTreeLogicalOrderedRangeCache : public LogicalOrderedRangeCache {
 public:
-    RBTreeLogicallyOrderedRangeCache(size_t capacity, LorcLogger::Level logger_level_ = LorcLogger::Level::DISABLE, PhysicalRangeType physical_range_type_ = PhysicalRangeType::VEC);
-    ~RBTreeLogicallyOrderedRangeCache() override;
+    RBTreeLogicalOrderedRangeCache(size_t capacity, LorcLogger::Level logger_level_ = LorcLogger::Level::DISABLE, PhysicalRangeType physical_range_type_ = PhysicalRangeType::VEC);
+    ~RBTreeLogicalOrderedRangeCache() override;
 
     void putGapPhysicalRange(ReferringRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) override;
     bool updateEntry(const Slice& key, const Slice& value) override;
@@ -59,7 +59,7 @@ public:
     
     bool Get(const Slice& internal_key, std::string* value, Status* s) const override;
     
-    LogicallyOrderedRangeCacheIterator* newLogicallyOrderedRangeCacheIterator(Arena* arena) const override;
+    LogicalOrderedRangeCacheIterator* newLogicalOrderedRangeCacheIterator(Arena* arena) const override;
 
     /**
      * Update the timestamp of a PhysicalRange to mark it as recently used.
@@ -86,7 +86,7 @@ private:
     // Downward estimate data can be read from range cache (to avoid pre-division too many ranges)
     size_t downwardEstimateLengthInRangeCache(const Slice& start_key, const Slice& end_key, size_t remaining_length) const;
 
-    friend class RBTreeLogicallyOrderedRangeCacheIterator;
+    friend class RBTreeLogicalOrderedRangeCacheIterator;
     std::set<std::unique_ptr<PhysicalRange>, PhysicalRangeComparator> ordered_physical_ranges;     // Container for ranges sorted by start key
     std::multimap<int, std::string> physical_range_length_map;  // Container for ranges sorted by length (for victim selection)
     uint64_t cache_timestamp;          // Timestamp for LRU-like functionality

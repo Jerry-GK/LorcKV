@@ -6,14 +6,14 @@
 
 namespace ROCKSDB_NAMESPACE {
 
-class RBTreeLogicallyOrderedRangeCache;
+class RBTreeLogicalOrderedRangeCache;
 class PhysicalRange;
 
-class RBTreeLogicallyOrderedRangeCacheIterator : public LogicallyOrderedRangeCacheIterator {
+class RBTreeLogicalOrderedRangeCacheIterator : public LogicalOrderedRangeCacheIterator {
 public:
-    explicit RBTreeLogicallyOrderedRangeCacheIterator(const RBTreeLogicallyOrderedRangeCache* cache);
+    explicit RBTreeLogicalOrderedRangeCacheIterator(const RBTreeLogicalOrderedRangeCache* cache);
     
-    ~RBTreeLogicallyOrderedRangeCacheIterator() override;
+    ~RBTreeLogicalOrderedRangeCacheIterator() override;
     bool Valid() const override;
     bool HasNextInRange() const override;
     void SeekToFirst() override;
@@ -28,7 +28,7 @@ public:
     Status status() const override;
 
 private:
-    const RBTreeLogicallyOrderedRangeCache* cache;
+    const RBTreeLogicalOrderedRangeCache* cache;
     std::set<std::unique_ptr<PhysicalRange>>::const_iterator current_range;
     int current_index;
     Status iter_status;

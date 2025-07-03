@@ -10,11 +10,11 @@
 
 namespace ROCKSDB_NAMESPACE {
 
-RBTreeLogicallyOrderedRangeCache::RBTreeLogicallyOrderedRangeCache(size_t capacity_, LorcLogger::Level logger_level_, PhysicalRangeType physical_range_type_)
-    : LogicallyOrderedRangeCache(capacity_, logger_level_, physical_range_type_), cache_timestamp(0) {
+RBTreeLogicalOrderedRangeCache::RBTreeLogicalOrderedRangeCache(size_t capacity_, LorcLogger::Level logger_level_, PhysicalRangeType physical_range_type_)
+    : LogicalOrderedRangeCache(capacity_, logger_level_, physical_range_type_), cache_timestamp(0) {
 }
 
-RBTreeLogicallyOrderedRangeCache::~RBTreeLogicallyOrderedRangeCache() {
+RBTreeLogicalOrderedRangeCache::~RBTreeLogicalOrderedRangeCache() {
     lockWrite();
     ordered_physical_ranges.clear();
     physical_range_length_map.clear();
@@ -22,17 +22,17 @@ RBTreeLogicallyOrderedRangeCache::~RBTreeLogicallyOrderedRangeCache() {
     unlockWrite();
 }
 
-void RBTreeLogicallyOrderedRangeCache::putGapPhysicalRange(ReferringRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) {
+void RBTreeLogicalOrderedRangeCache::putGapPhysicalRange(ReferringRange&& newRefRange, bool leftConcat, bool rightConcat, bool emptyConcat, std::string emptyConcatLeftKey, std::string emptyConcatRightKey) {
     lockWrite();
     std::chrono::high_resolution_clock::time_point start_time;
 
     std::unique_ptr<PhysicalRange> newRange;
-    if (LogicallyOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::CONTINUOUS) {
+    if (LogicalOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::CONTINUOUS) {
         newRange = ContinuousPhysicalRange::buildFromReferringRange(newRefRange);
-    } else if (LogicallyOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::VEC) {
+    } else if (LogicalOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::VEC) {
         newRange = VecPhysicalRange::buildFromReferringRange(newRefRange);
     } else {
-        logger.error("Unsupported PhysicalRangeType for RBTreeLogicallyOrderedRangeCache");
+        logger.error("Unsupported PhysicalRangeType for RBTreeLogicalOrderedRangeCache");
         unlockWrite();
         return;
     }
@@ -83,7 +83,7 @@ void RBTreeLogicallyOrderedRangeCache::putGapPhysicalRange(ReferringRange&& newR
     unlockWrite();
 }
 
-bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, const Slice& value) {
+bool RBTreeLogicalOrderedRangeCache::updateEntry(const Slice& internal_key, const Slice& value) {
     // update Entry is done with outside write lock
     Slice user_key = Slice(internal_key.data(), internal_key.size() - PhysicalRange::internal_key_extra_bytes);
 
@@ -136,7 +136,7 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
 
     if (updateResult == PhysicalRangeUpdateResult::UNABLE_TO_INSERT) {
         logger.error("Failed to update entry (user key = " + parsed_internal_key.user_key.ToString() + ") in PhysicalRange: " + (*it)->toString());
-        if (LogicallyOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::CONTINUOUS) {
+        if (LogicalOrderedRangeCache::getPhysicalRangeType() == PhysicalRangeType::CONTINUOUS) {
             logger.error("Random insertion in continuous physical range is not supported yet");
         }
         return false;
@@ -168,7 +168,7 @@ bool RBTreeLogicallyOrderedRangeCache::updateEntry(const Slice& internal_key, co
     return true;
 }
 
-bool RBTreeLogicallyOrderedRangeCache::Get(const Slice& internal_key, std::string* value, Status* s) const {
+bool RBTreeLogicalOrderedRangeCache::Get(const Slice& internal_key, std::string* value, Status* s) const {
     lockRead();
     assert(s);
     
@@ -242,7 +242,7 @@ bool RBTreeLogicallyOrderedRangeCache::Get(const Slice& internal_key, std::strin
     return true;
 }
 
-void RBTreeLogicallyOrderedRangeCache::tryVictim() {    
+void RBTreeLogicalOrderedRangeCache::tryVictim() {    
     lockRead();
     // If no ranges exist, nothing to evict
     if (physical_range_length_map.empty() || ordered_physical_ranges.empty() || this->current_size <= this->capacity) {
@@ -259,7 +259,7 @@ void RBTreeLogicallyOrderedRangeCache::tryVictim() {
     unlockWrite();
 }
 
-void RBTreeLogicallyOrderedRangeCache::victim() {    
+void RBTreeLogicalOrderedRangeCache::victim() {    
     // Evict the shortest PhysicalRange to minimize impact
     if (this->current_size <= this->capacity) {
         return;
@@ -316,7 +316,7 @@ void RBTreeLogicallyOrderedRangeCache::victim() {
     }
 }
 
-void RBTreeLogicallyOrderedRangeCache::pinRange(std::string startKey) {
+void RBTreeLogicalOrderedRangeCache::pinRange(std::string startKey) {
     auto it = ordered_physical_ranges.find(startKey);
     if (it != ordered_physical_ranges.end() && (*it)->startUserKey() == startKey) {
         // update the timestamp
@@ -324,19 +324,19 @@ void RBTreeLogicallyOrderedRangeCache::pinRange(std::string startKey) {
     }
 }
 
-LogicallyOrderedRangeCacheIterator* RBTreeLogicallyOrderedRangeCache::newLogicallyOrderedRangeCacheIterator(Arena* arena) const {
+LogicalOrderedRangeCacheIterator* RBTreeLogicalOrderedRangeCache::newLogicalOrderedRangeCacheIterator(Arena* arena) const {
     if (arena == nullptr) {
-        return new RBTreeLogicallyOrderedRangeCacheIterator(this);
+        return new RBTreeLogicalOrderedRangeCacheIterator(this);
     }
-    auto mem = arena->AllocateAligned(sizeof(RBTreeLogicallyOrderedRangeCacheIterator));
-    return new (mem) RBTreeLogicallyOrderedRangeCacheIterator(this);
+    auto mem = arena->AllocateAligned(sizeof(RBTreeLogicalOrderedRangeCacheIterator));
+    return new (mem) RBTreeLogicalOrderedRangeCacheIterator(this);
 }
 
-void RBTreeLogicallyOrderedRangeCache::printAllPhysicalRanges() const {
+void RBTreeLogicalOrderedRangeCache::printAllPhysicalRanges() const {
     if (!logger.outputInLevel(LorcLogger::Level::DEBUG)) {
         return;
     }
-    logger.debug("All physical ranges in RBTreeLogicallyOrderedRangeCache:");
+    logger.debug("All physical ranges in RBTreeLogicalOrderedRangeCache:");
     for (auto it = ordered_physical_ranges.begin(); it != ordered_physical_ranges.end(); ++it) {
         logger.debug("PhysicalRange: " + (*it)->toString());
     }
@@ -345,11 +345,11 @@ void RBTreeLogicallyOrderedRangeCache::printAllPhysicalRanges() const {
     logger.debug("Total PhysicalRange num: " + std::to_string(this->ordered_physical_ranges.size()));
 }
 
-void RBTreeLogicallyOrderedRangeCache::printAllLogicalRanges() const {
+void RBTreeLogicalOrderedRangeCache::printAllLogicalRanges() const {
     if (!logger.outputInLevel(LorcLogger::Level::DEBUG)) {
         return;
     }
-    logger.debug("All logical ranges in RBTreeLogicallyOrderedRangeCache:");
+    logger.debug("All logical ranges in RBTreeLogicalOrderedRangeCache:");
     auto logical_ranges = this->ranges_view.getLogicalRanges();
     size_t total_len = 0;
     for (auto it = logical_ranges.begin(); it != logical_ranges.end(); ++it) {
@@ -360,7 +360,7 @@ void RBTreeLogicallyOrderedRangeCache::printAllLogicalRanges() const {
     logger.debug("Total LogicalRange num: " + std::to_string(logical_ranges.size()));
 }
 
-void RBTreeLogicallyOrderedRangeCache::printAllRangesWithKeys() const {
+void RBTreeLogicalOrderedRangeCache::printAllRangesWithKeys() const {
     lockRead();
     if (!logger.outputInLevel(LorcLogger::Level::DEBUG)) {
         unlockRead();
@@ -373,7 +373,7 @@ void RBTreeLogicallyOrderedRangeCache::printAllRangesWithKeys() const {
     this->printAllPhysicalRanges();
     logger.debug("----------------------------------------\n");
 
-    logger.debug("All keys in RBTreeLogicallyOrderedRangeCache:");
+    logger.debug("All keys in RBTreeLogicalOrderedRangeCache:");
     for (const auto& range : ordered_physical_ranges) {
         for (size_t i = 0; i < range->length(); ++i) {
             ParsedInternalKey parsed_key;
@@ -386,23 +386,23 @@ void RBTreeLogicallyOrderedRangeCache::printAllRangesWithKeys() const {
     unlockRead();
 }
 
-void RBTreeLogicallyOrderedRangeCache::lockRead() const {
+void RBTreeLogicalOrderedRangeCache::lockRead() const {
     logical_ranges_mutex_.lock_shared();
 }
 
-void RBTreeLogicallyOrderedRangeCache::lockWrite() {
+void RBTreeLogicalOrderedRangeCache::lockWrite() {
     logical_ranges_mutex_.lock();
 }
 
-void RBTreeLogicallyOrderedRangeCache::unlockRead() const {
+void RBTreeLogicalOrderedRangeCache::unlockRead() const {
     logical_ranges_mutex_.unlock_shared();
 }
 
-void RBTreeLogicallyOrderedRangeCache::unlockWrite() {
+void RBTreeLogicalOrderedRangeCache::unlockWrite() {
     logical_ranges_mutex_.unlock();
 }
 
-std::vector<LogicalRange> RBTreeLogicallyOrderedRangeCache::divideLogicalRange(const Slice& start_key, size_t len, const Slice& end_key) const {
+std::vector<LogicalRange> RBTreeLogicalOrderedRangeCache::divideLogicalRange(const Slice& start_key, size_t len, const Slice& end_key) const {
     std::vector<LogicalRange> result;
     size_t total_length_in_range_cache = 0;
     
@@ -505,7 +505,7 @@ std::vector<LogicalRange> RBTreeLogicallyOrderedRangeCache::divideLogicalRange(c
     return result;
 }
 
-size_t RBTreeLogicallyOrderedRangeCache::downwardEstimateLengthInRangeCache(const Slice& start_key, const Slice& end_key, size_t remaining_length) const {
+size_t RBTreeLogicalOrderedRangeCache::downwardEstimateLengthInRangeCache(const Slice& start_key, const Slice& end_key, size_t remaining_length) const {
     assert(!start_key.empty() && !end_key.empty() && start_key <= end_key);
     
     size_t total_length = 0;

@@ -122,14 +122,14 @@ private:
 };
 
 // This is a cache for ranges. Key-Value Ranges is the smallest unit of data that can be cached.
-class LogicallyOrderedRangeCacheIterator;
+class LogicalOrderedRangeCacheIterator;
 
 class Arena;
 
-class LogicallyOrderedRangeCache {
+class LogicalOrderedRangeCache {
 public:
-    LogicallyOrderedRangeCache(size_t capacity_, LorcLogger::Level logger_level_ = LorcLogger::Level::DISABLE, PhysicalRangeType physical_range_type_ = PhysicalRangeType::VEC);
-    virtual ~LogicallyOrderedRangeCache();
+    LogicalOrderedRangeCache(size_t capacity_, LorcLogger::Level logger_level_ = LorcLogger::Level::DISABLE, PhysicalRangeType physical_range_type_ = PhysicalRangeType::VEC);
+    virtual ~LogicalOrderedRangeCache();
 
     /**
      * Try to merge a new range(from range query result not in range cache)
@@ -220,7 +220,7 @@ public:
     /**
      * Get a new PhysicalRange cache iterator.
      */
-    virtual LogicallyOrderedRangeCacheIterator* newLogicallyOrderedRangeCacheIterator(Arena* arena) const = 0;
+    virtual LogicalOrderedRangeCacheIterator* newLogicalOrderedRangeCacheIterator(Arena* arena) const = 0;
 
     /**
      * Get from range cache.
@@ -252,7 +252,7 @@ public:
     }
 
 protected:
-    friend class LogicallyOrderedRangeCacheIterator;
+    friend class LogicalOrderedRangeCacheIterator;
 
     size_t capacity;
     mutable LorcLogger logger;

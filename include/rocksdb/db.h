@@ -94,7 +94,7 @@ class ColumnFamilyHandle {
   virtual const Comparator* GetComparator() const = 0;
 
   // Return the range cache of corresponding column family.
-  virtual std::shared_ptr<LogicallyOrderedRangeCache> GetRangeCache() const {
+  virtual std::shared_ptr<LogicalOrderedRangeCache> GetRangeCache() const {
     assert(false);
     return nullptr;
   }
@@ -740,7 +740,7 @@ class DB {
 
   // Scan a range of data starting from start_key(from start if empty), terminated by len or end_key
   // The results will be stored in keys and values vectors.
-  // It will use LORC(logically ordered range cache) to accelerate the scan.
+  // It will use LORC(logical ordered range cache) to accelerate the scan.
   virtual Status Scan(const ReadOptions& options,
                     ColumnFamilyHandle* column_family,
                     const Slice& start_key,  // empty if start at first

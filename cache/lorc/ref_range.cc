@@ -46,7 +46,7 @@ ReferringRange::~ReferringRange() {
 }
 
 ReferringRange::ReferringRange(const ReferringRange& other) {
-    // assert(false); // (it should not be called in RBTreeReferringLogicallyOrderedRangeCache)
+    // assert(false); // (it should not be called in RBTreeReferringLogicalOrderedRangeCache)
     this->valid = other.valid;
     this->seq_num = other.seq_num;
     this->range_length = other.range_length;
@@ -73,7 +73,7 @@ ReferringRange::ReferringRange(ReferringRange&& other) noexcept {
 }
 
 ReferringRange& ReferringRange::operator=(const ReferringRange& other) {
-    // RBTreeReferringLogicallyOrderedRangeCache should never call this
+    // RBTreeReferringLogicalOrderedRangeCache should never call this
     // assert(false);
     if (this != &other) {
         this->valid = other.valid;

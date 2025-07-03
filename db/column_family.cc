@@ -96,7 +96,7 @@ const Comparator* ColumnFamilyHandleImpl::GetComparator() const {
   return cfd()->user_comparator();
 }
 
-std::shared_ptr<LogicallyOrderedRangeCache> ColumnFamilyHandleImpl::GetRangeCache() const {
+std::shared_ptr<LogicalOrderedRangeCache> ColumnFamilyHandleImpl::GetRangeCache() const {
   return cfd()->GetRangeCache();
 }
 
@@ -501,7 +501,7 @@ void SuperVersion::Cleanup() {
 
 void SuperVersion::Init(
     ColumnFamilyData* new_cfd, MemTable* new_mem, MemTableListVersion* new_imm,
-    std::shared_ptr<LogicallyOrderedRangeCache> new_range_cache,
+    std::shared_ptr<LogicalOrderedRangeCache> new_range_cache,
     Version* new_current,
     std::shared_ptr<const SeqnoToTimeMapping> new_seqno_to_time_mapping) {
   cfd = new_cfd;

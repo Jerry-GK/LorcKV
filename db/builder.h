@@ -54,7 +54,7 @@ Status BuildTable(
     const std::string& dbname, VersionSet* versions,
     const ImmutableDBOptions& db_options, const TableBuilderOptions& tboptions,
     const FileOptions& file_options, TableCache* table_cache,
-    const std::shared_ptr<LogicallyOrderedRangeCache> range_cache,
+    const std::shared_ptr<LogicalOrderedRangeCache> range_cache,
     InternalIterator* iter,
     std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>
         range_del_iters,

@@ -581,12 +581,12 @@ Status UpdateTieredCache(
     TieredAdmissionPolicy adm_policy = TieredAdmissionPolicy::kAdmPolicyMax);
 
 // Range Cache (lorc)
-// RBTreeLogicallyOrderedRangeCache
-inline std::shared_ptr<LogicallyOrderedRangeCache> NewRBTreeLogicallyOrderedRangeCache(size_t capacity, LorcLogger::Level logger_level = LorcLogger::Level::DISABLE, PhysicalRangeType physical_range_type = PhysicalRangeType::VEC) {
+// RBTreeLogicalOrderedRangeCache
+inline std::shared_ptr<LogicalOrderedRangeCache> NewRBTreeLogicalOrderedRangeCache(size_t capacity, LorcLogger::Level logger_level = LorcLogger::Level::DISABLE, PhysicalRangeType physical_range_type = PhysicalRangeType::VEC) {
   if (capacity == 0) {
     // If capacity is 0, we return a null pointer to indicate no cache.
     return nullptr;
   }
-  return std::make_shared<RBTreeLogicallyOrderedRangeCache>(capacity, logger_level, physical_range_type);
+  return std::make_shared<RBTreeLogicalOrderedRangeCache>(capacity, logger_level, physical_range_type);
 }  
 }// namespace ROCKSDB_NAMESPACE

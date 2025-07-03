@@ -5,16 +5,16 @@
 
 namespace ROCKSDB_NAMESPACE {
 
-class LogicallyOrderedRangeCache;
+class LogicalOrderedRangeCache;
 
-class LogicallyOrderedRangeCacheIterator : public InternalIterator {
+class LogicalOrderedRangeCacheIterator : public InternalIterator {
 public:
-    LogicallyOrderedRangeCacheIterator() = default;
+    LogicalOrderedRangeCacheIterator() = default;
     // No copying allowed
-    LogicallyOrderedRangeCacheIterator(const LogicallyOrderedRangeCacheIterator&) = delete;
-    void operator=(const LogicallyOrderedRangeCacheIterator&) = delete;
+    LogicalOrderedRangeCacheIterator(const LogicalOrderedRangeCacheIterator&) = delete;
+    void operator=(const LogicalOrderedRangeCacheIterator&) = delete;
 
-    virtual ~LogicallyOrderedRangeCacheIterator() = default;
+    virtual ~LogicalOrderedRangeCacheIterator() = default;
 
     virtual bool Valid() const override = 0;
     virtual void SeekToFirst() override = 0;

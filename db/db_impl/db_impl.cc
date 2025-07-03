@@ -2097,7 +2097,7 @@ InternalIterator* DBImpl::NewInternalIterator(
   // Range cache iterator between immutable memtables and L0
   if (s.ok() && super_version->range_cache != nullptr 
       && (read_options.read_tier == kMemtableAndRangeCacheTier)) {
-    LogicallyOrderedRangeCacheIterator* range_cache_iter = super_version->range_cache->newLogicallyOrderedRangeCacheIterator(arena);
+    LogicalOrderedRangeCacheIterator* range_cache_iter = super_version->range_cache->newLogicalOrderedRangeCacheIterator(arena);
     merge_iter_builder.AddIterator(range_cache_iter);
   }
 
