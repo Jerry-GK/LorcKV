@@ -2698,7 +2698,9 @@ Status DB::Put(const WriteOptions& opt, ColumnFamilyHandle* column_family,
   // if (range_cache) {
   //   ValueType value_type = value.empty() ? kTypeDeletion : kTypeValue;
   //   std::string internal_key = InternalKey(key, this->GetSnapshot()->GetSequenceNumber(), value_type).Encode().ToString();
+  //   range_cache->lockWrite();
   //   range_cache->updateEntry(Slice(internal_key), value);
+  //   range_cache->unlockWrite();
   // }
 
   return s;
@@ -2724,9 +2726,10 @@ Status DB::Put(const WriteOptions& opt, ColumnFamilyHandle* column_family,
   // if (range_cache) {
   //   ValueType value_type = value.empty() ? kTypeDeletion : kTypeValue;
   //   Slice internal_key = InternalKey(key, this->GetSnapshot()->GetSequenceNumber(), value_type).Encode();
+  //   range_cache->lockWrite();
   //   range_cache->updateEntry(internal_key, value);
+  //   range_cache->unlockWrite();
   // }
-
 
   return s;
 }

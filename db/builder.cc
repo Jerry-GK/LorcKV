@@ -216,6 +216,10 @@ Status BuildTable(
     std::string value_buf;
     c_iter.SeekToFirst();
     std::string last_user_key;
+
+    if (range_cache) {
+      range_cache->lockWrite();
+    }
     for (; c_iter.Valid(); c_iter.Next()) {
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
@@ -289,6 +293,10 @@ Status BuildTable(
             ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
       }
     }
+    if (range_cache) {
+      range_cache->unlockWrite();
+    }
+
     if (!s.ok()) {
       c_iter.status().PermitUncheckedError();
     } else if (!c_iter.status().ok()) {
